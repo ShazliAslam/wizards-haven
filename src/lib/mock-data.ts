@@ -166,13 +166,20 @@ ENGINEERS.forEach((eng, i) => {
   eng.paidAmount = Math.round(total * eng.shiftRate * (i % 4 === 0 ? 0 : 0.5));
 });
 
-export const gbp = (n: number) =>
-  new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 0 }).format(n);
+/** Coerce anything (null, undefined, "", "abc", NaN) into a finite number. */
+export function num(v: unknown, fallback = 0): number {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
 
-export const gbp2 = (n: number) =>
-  new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(n);
+export const gbp = (n: unknown) =>
+  new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 0 }).format(num(n));
 
-export const expenseTotal = (e: ExpenseEntry) => e.fuel + e.meals + e.creditCard;
+export const gbp2 = (n: unknown) =>
+  new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(num(n));
+
+export const expenseTotal = (e: ExpenseEntry) =>
+  num(e?.fuel) + num(e?.meals) + num(e?.creditCard);
 
 export function daysAgo(dateStr: string) {
   const now = new Date().toISOString().slice(0, 10);

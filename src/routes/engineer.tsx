@@ -6,7 +6,6 @@ import {
   CreditCard,
   Download,
   Fuel,
-  MapPin,
   ReceiptText,
   UploadCloud,
   Utensils,
@@ -21,7 +20,10 @@ import {
   gbp,
   gbp2,
 } from "@/lib/mock-data";
+import { paymentSummary } from "@/lib/payroll";
 import { generateEngineerStatementPdf } from "@/lib/pdf";
+import { WeeklyShiftBlocks } from "@/components/WeeklyShiftBlocks";
+import { PaymentBreakdownDialog } from "@/components/PaymentBreakdownDialog";
 import { AppHeader } from "@/components/AppHeader";
 import { StatCard } from "@/components/StatCard";
 import { Button } from "@/components/ui/button";
@@ -45,7 +47,7 @@ export const Route = createFileRoute("/engineer")({
       {
         name: "description",
         content:
-          "Log daily site shifts, submit fuel, meal and credit card expenses with receipt uploads, and track weekly hours and claims.",
+          "Log daily site shifts, submit fuel, meal and credit card expenses with receipt uploads, and track weekly shifts and claims.",
       },
       { property: "og:title", content: "Engineer Dashboard — WeActive9" },
       {
@@ -81,9 +83,11 @@ function EngineerDashboard() {
     .filter((e) => daysAgo(e.date) < 7)
     .reduce((a, e) => a + expenseTotal(e), 0);
   const pending = myExpenses.filter((e) => e.status === "Pending").length;
-  const monthPay =
-    myShifts.filter((s) => daysAgo(s.date) < 28).reduce((a, s) => a + s.shiftCount, 0) *
-    engineer.shiftRate;
+  const summary = useMemo(
+    () => paymentSummary(engineer, myShifts, myExpenses),
+    [engineer, myShifts, myExpenses],
+  );
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
 
   const chartData = useMemo(() => {
     const buckets: Record<string, { day: string; Fuel: number; Meals: number; Card: number }> = {};
@@ -158,13 +162,15 @@ function EngineerDashboard() {
             sub="Awaiting approval"
             tone="warning"
           />
-          <StatCard
-            icon={CreditCard}
-            label="Est. monthly pay"
-            value={gbp(monthPay)}
-            sub="Shifts × shift rate"
-            tone="cyan"
-          />
+          <button type="button" className="text-left" onClick={() => setBreakdownOpen(true)}>
+            <StatCard
+              icon={CreditCard}
+              label="To be paid"
+              value={gbp2(summary.toBePaid)}
+              sub={`Paid to date ${gbp2(summary.paid)} · tap for breakdown`}
+              tone="cyan"
+            />
+          </button>
         </section>
 
         <div className="grid gap-6 lg:grid-cols-2">
@@ -375,7 +381,7 @@ function EngineerDashboard() {
                   try {
                     await generateEngineerStatementPdf(engineer, myShifts, myExpenses);
                     toast.success("Receipt PDF downloaded", {
-                      description: `${engineer.name} — 28 day expense & hours statement.`,
+                      description: `${engineer.name} — 28 day expense & shifts statement.`,
                     });
                   } catch {
                     toast.error("Could not generate the PDF. Please try again.");
@@ -418,30 +424,18 @@ function EngineerDashboard() {
             </TabsContent>
 
             <TabsContent value="shifts" className="m-0">
-              <ul className="divide-y divide-border">
-                {myShifts.slice(0, 12).map((s) => (
-                  <li key={s.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 p-4">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold">{s.site}</p>
-                      <p className="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground">
-                        <span className="inline-flex items-center gap-1">
-                          <CalendarDays className="h-3 w-3" /> {s.date}
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <MapPin className="h-3 w-3" /> {s.shiftType} shift
-                        </span>
-                      </p>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p className="text-sm font-bold">{s.shiftCount} shift{s.shiftCount > 1 ? "s" : ""}</p>
-                      <StatusPill status={s.status} />
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              <WeeklyShiftBlocks shifts={myShifts} shiftRate={engineer.shiftRate} />
             </TabsContent>
+
           </Tabs>
         </section>
+
+        <PaymentBreakdownDialog
+          engineer={engineer}
+          summary={summary}
+          open={breakdownOpen}
+          onOpenChange={setBreakdownOpen}
+        />
       </main>
     </div>
   );
