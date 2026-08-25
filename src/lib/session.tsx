@@ -18,8 +18,11 @@ import {
   type Engineer,
   type EngineerDocument,
   type ExpenseEntry,
+  num,
+  OWN_VEHICLE_WEEKLY_CAP,
   type ShiftLog,
 } from "./mock-data";
+import { weekKey } from "./payroll";
 import {
   fetchEngineerSheetRecords,
   pushEngineer,
@@ -55,6 +58,7 @@ interface SessionValue {
   deleteShift: (id: string) => void;
   commentOnShift: (id: string, comment: string) => void;
   addExpense: (e: Omit<ExpenseEntry, "id" | "engineerId" | "status">) => void;
+  updateExpense: (id: string, patch: Partial<Omit<ExpenseEntry, "id" | "engineerId">>) => void;
   addEngineer: (input: NewEngineerInput) => Engineer;
   updateEngineer: (id: string, patch: Partial<NewEngineerInput>) => void;
   deleteEngineer: (id: string) => void;
@@ -78,9 +82,9 @@ function mergeById<T extends { id: string }>(local: T[], incoming: T[]): T[] {
 function normalise(list: Engineer[]): Engineer[] {
   return list.map((e) => ({
     ...e,
-    shiftRate: Number(e.shiftRate ?? (e as unknown as { hourlyRate?: number }).hourlyRate ?? 180),
-    vatRate: Number.isFinite(e.vatRate) ? e.vatRate : DEFAULT_VAT_DEDUCTION,
-    paidAmount: Number(e.paidAmount ?? 0),
+    shiftRate: num(e.shiftRate ?? (e as unknown as { hourlyRate?: number }).hourlyRate, 180),
+    vatRate: Number.isFinite(Number(e.vatRate)) ? num(e.vatRate) : DEFAULT_VAT_DEDUCTION,
+    paidAmount: num(e.paidAmount),
   }));
 }
 
@@ -140,8 +144,31 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       shifts,
       expenses,
       addShift: (s) => {
+        const mine = shifts.filter((x) => x.engineerId === engineer.id);
+        let ownVehicle = !!s.ownVehicle;
+        if (ownVehicle) {
+          if (mine.some((x) => x.date === s.date && x.ownVehicle)) {
+            ownVehicle = false;
+            toast.warning("Own vehicle already claimed for this day", {
+              description: "Only one own-vehicle allowance is allowed per day.",
+            });
+          } else {
+            const wk = weekKey(s.date);
+            const used = new Set(
+              mine.filter((x) => x.ownVehicle && weekKey(x.date) === wk).map((x) => x.date),
+            );
+            if (used.size >= OWN_VEHICLE_WEEKLY_CAP) {
+              ownVehicle = false;
+              toast.warning("Weekly own-vehicle limit reached", {
+                description: `Maximum ${OWN_VEHICLE_WEEKLY_CAP} own-vehicle days per week.`,
+              });
+            }
+          }
+        }
         const shift: ShiftLog = {
           ...s,
+          shiftCount: num(s.shiftCount, 1),
+          ownVehicle,
           id: `SH-new-${Date.now()}`,
           engineerId: engineer.id,
           status: "Pending",
@@ -150,7 +177,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         void pushShift(shift, engineer).then((r) => syncToast("Shift", r));
       },
       updateShift: (id, patch) => {
-        setShifts((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+        const target = shifts.find((s) => s.id === id);
+        const next = { ...patch };
+        if (next.shiftCount !== undefined) next.shiftCount = num(next.shiftCount, 1);
+        if (next.ownVehicle && target) {
+          const date = next.date ?? target.date;
+          const mine = shifts.filter((x) => x.engineerId === target.engineerId && x.id !== id);
+          const wk = weekKey(date);
+          const used = new Set(
+            mine.filter((x) => x.ownVehicle && weekKey(x.date) === wk).map((x) => x.date),
+          );
+          if (mine.some((x) => x.date === date && x.ownVehicle)) {
+            next.ownVehicle = false;
+            toast.warning("Own vehicle already claimed for this day");
+          } else if (used.size >= OWN_VEHICLE_WEEKLY_CAP) {
+            next.ownVehicle = false;
+            toast.warning(`Maximum ${OWN_VEHICLE_WEEKLY_CAP} own-vehicle days per week`);
+          }
+        }
+        setShifts((prev) => prev.map((s) => (s.id === id ? { ...s, ...next } : s)));
       },
       deleteShift: (id) => {
         setShifts((prev) => prev.filter((s) => s.id !== id));
@@ -174,15 +219,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setExpenses((prev) => [expense, ...prev]);
         void pushExpense(expense, engineer).then((r) => syncToast("Expense claim", r));
       },
+      updateExpense: (id, patch) => {
+        setExpenses((prev) =>
+          prev.map((e) =>
+            e.id === id
+              ? {
+                  ...e,
+                  ...patch,
+                  ...(patch.fuel !== undefined ? { fuel: num(patch.fuel) } : {}),
+                  ...(patch.meals !== undefined ? { meals: num(patch.meals) } : {}),
+                  ...(patch.creditCard !== undefined ? { creditCard: num(patch.creditCard) } : {}),
+                }
+              : e,
+          ),
+        );
+      },
       addEngineer: (input) => {
         const next: Engineer = {
           id: `ENG-${String(engineers.length + 1).padStart(3, "0")}-${Date.now().toString().slice(-4)}`,
           name: input.name,
           email: input.email,
           region: input.region,
-          shiftRate: input.shiftRate,
-          vatRate: input.vatRate ?? DEFAULT_VAT_DEDUCTION,
-          paidAmount: input.paidAmount ?? 0,
+          shiftRate: num(input.shiftRate),
+          vatRate: input.vatRate === undefined ? DEFAULT_VAT_DEDUCTION : num(input.vatRate, DEFAULT_VAT_DEDUCTION),
+          paidAmount: num(input.paidAmount),
           sheetId: input.sheetId,
           active: true,
         };
@@ -199,9 +259,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                   ...(patch.name !== undefined ? { name: patch.name } : {}),
                   ...(patch.email !== undefined ? { email: patch.email } : {}),
                   ...(patch.region !== undefined ? { region: patch.region } : {}),
-                  ...(patch.shiftRate !== undefined ? { shiftRate: patch.shiftRate } : {}),
-                  ...(patch.vatRate !== undefined ? { vatRate: patch.vatRate } : {}),
-                  ...(patch.paidAmount !== undefined ? { paidAmount: patch.paidAmount } : {}),
+                  ...(patch.shiftRate !== undefined ? { shiftRate: num(patch.shiftRate) } : {}),
+                  ...(patch.vatRate !== undefined ? { vatRate: num(patch.vatRate) } : {}),
+                  ...(patch.paidAmount !== undefined ? { paidAmount: num(patch.paidAmount) } : {}),
                   ...(patch.sheetId !== undefined ? { sheetId: patch.sheetId || undefined } : {}),
                 }
               : e,
@@ -249,10 +309,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           toast.error("Google Sheets sync failed", { description: res.error });
           return;
         }
-        setShifts((prev) => mergeById(prev, res.shifts));
-        setExpenses((prev) => mergeById(prev, res.expenses));
+        setShifts((prev) =>
+          mergeById(
+            prev,
+            res.shifts.map((s) => ({ ...s, shiftCount: num(s.shiftCount, 1) })),
+          ),
+        );
+        setExpenses((prev) =>
+          mergeById(
+            prev,
+            res.expenses.map((e) => ({
+              ...e,
+              fuel: num(e.fuel),
+              meals: num(e.meals),
+              creditCard: num(e.creditCard),
+            })),
+          ),
+        );
         if (res.paid !== undefined) {
-          const paid = res.paid;
+          const paid = num(res.paid);
           setEngineers((prev) => prev.map((e) => (e.id === id ? { ...e, paidAmount: paid } : e)));
         }
         toast.success("Sheet synced successfully!", {
