@@ -70,7 +70,7 @@ export function EngineerDetailDialog({ engineer, onOpenChange }: Props) {
   useEffect(() => {
     setEditing(false);
     setSheetDraft(engineer?.sheetId ?? "");
-    setRateDraft(engineer ? String(engineer.hourlyRate) : "");
+    setRateDraft(engineer ? String(engineer.shiftRate) : "");
     setEmailDraft(engineer?.email ?? "");
   }, [engineer]);
 
@@ -100,19 +100,19 @@ export function EngineerDetailDialog({ engineer, onOpenChange }: Props) {
   const card = periodExpenses.reduce((a, e) => a + e.creditCard, 0);
   const gross = fuel + meals + card;
   const vat = vatPortion(gross);
-  const dayHours = periodShifts.filter((s) => s.shiftType === "Day").reduce((a, s) => a + s.hours, 0);
-  const nightHours = periodShifts
+  const dayShifts = periodShifts
+    .filter((s) => s.shiftType === "Day")
+    .reduce((a, s) => a + s.shiftCount, 0);
+  const nightShifts = periodShifts
     .filter((s) => s.shiftType === "Night")
-    .reduce((a, s) => a + s.hours, 0);
-  const earnings = engineer
-    ? dayHours * engineer.hourlyRate + nightHours * engineer.hourlyRate * 1.15
-    : 0;
+    .reduce((a, s) => a + s.shiftCount, 0);
+  const earnings = engineer ? (dayShifts + nightShifts) * engineer.shiftRate : 0;
 
   const sites = useMemo(() => {
     const map = new Map<string, { hours: number; visits: number; spend: number }>();
     periodShifts.forEach((s) => {
       const row = map.get(s.site) ?? { hours: 0, visits: 0, spend: 0 };
-      row.hours += s.hours;
+      row.hours += s.shiftCount;
       row.visits += 1;
       map.set(s.site, row);
     });
@@ -137,7 +137,7 @@ export function EngineerDetailDialog({ engineer, onOpenChange }: Props) {
                 </Badge>
               </DialogTitle>
               <DialogDescription>
-                {engineer.region} region · {engineer.email} · {gbp2(engineer.hourlyRate)}/hour
+                {engineer.region} region · {engineer.email} · {gbp2(engineer.shiftRate)}/shift
                 {engineer.sheetId ? " · Google Sheet linked" : " · No sheet linked"}
               </DialogDescription>
             </DialogHeader>
@@ -243,7 +243,7 @@ export function EngineerDetailDialog({ engineer, onOpenChange }: Props) {
                     onClick={() => {
                       const rate = Number(rateDraft);
                       if (!Number.isFinite(rate) || rate <= 0) {
-                        toast.error("Enter a valid hourly rate");
+                        toast.error("Enter a valid shift rate");
                         return;
                       }
                       if (!emailDraft.trim().includes("@")) {
@@ -253,7 +253,7 @@ export function EngineerDetailDialog({ engineer, onOpenChange }: Props) {
                       updateEngineer(engineer.id, {
                         sheetId: sheetDraft.trim(),
                         email: emailDraft.trim(),
-                        hourlyRate: rate,
+                        shiftRate: rate,
                       });
                       setEditing(false);
                     }}
@@ -289,7 +289,7 @@ export function EngineerDetailDialog({ engineer, onOpenChange }: Props) {
 
             <section className="surface-card overflow-x-auto">
               <p className="flex items-center gap-2 p-4 pb-2 text-sm font-bold uppercase tracking-[0.1em] text-muted-foreground">
-                <MapPin className="h-4 w-4" /> Sites visited · {dayHours + nightHours} h logged
+                <MapPin className="h-4 w-4" /> Sites visited · {dayShifts + nightShifts} shifts logged
               </p>
               <Table>
                 <TableHeader>
