@@ -349,7 +349,7 @@ function AdminDashboard() {
                 </p>
                 <p className="mt-1 text-2xl font-extrabold tracking-tight">{gbp(payrollTotal)}</p>
                 <p className="text-xs text-muted-foreground">
-                  Base hours + night uplift (15%) + approved reimbursements
+                  Shifts × rate − VAT + approved reimbursements − paid to date
                 </p>
               </div>
               <Button
@@ -360,12 +360,14 @@ function AdminDashboard() {
                       payroll.map((p) => ({
                         name: p.eng.name,
                         region: p.eng.region,
-                        rate: p.eng.hourlyRate,
-                        dayHours: p.dayHours,
-                        nightHours: p.nightHours,
-                        base: p.base,
-                        reimb: p.reimb,
-                        gross: p.gross,
+                        rate: p.eng.shiftRate,
+                        shifts: p.summary.shiftCount,
+                        ownVehicle: p.summary.ownVehicleDays,
+                        gross: p.summary.grossEarned,
+                        vat: p.summary.vatDeducted,
+                        reimb: p.summary.reimbursables,
+                        paid: p.summary.paid,
+                        toBePaid: p.summary.toBePaid,
                       })),
                       "Last 28 days",
                     );
