@@ -6,6 +6,7 @@ import {
   gbp,
   gbp2,
   expenseTotal,
+  num,
   vatPortion,
   type Engineer,
   type ExpenseEntry,
@@ -13,6 +14,8 @@ import {
 } from "@/lib/mock-data";
 import { generateEngineerStatementPdf } from "@/lib/pdf";
 import { useSession } from "@/lib/session";
+import { paymentSummary } from "@/lib/payroll";
+import { ClaimAmendTable, QueryList, ShiftAmendTable } from "@/components/AmendPanels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -65,12 +68,14 @@ export function EngineerDetailDialog({ engineer, onOpenChange }: Props) {
   const [editing, setEditing] = useState(false);
   const [sheetDraft, setSheetDraft] = useState("");
   const [rateDraft, setRateDraft] = useState("");
+  const [paidDraft, setPaidDraft] = useState("");
   const [emailDraft, setEmailDraft] = useState("");
 
   useEffect(() => {
     setEditing(false);
     setSheetDraft(engineer?.sheetId ?? "");
-    setRateDraft(engineer ? String(engineer.shiftRate) : "");
+    setRateDraft(engineer ? String(num(engineer.shiftRate)) : "");
+    setPaidDraft(engineer ? String(num(engineer.paidAmount)) : "");
     setEmailDraft(engineer?.email ?? "");
   }, [engineer]);
 
@@ -106,22 +111,28 @@ export function EngineerDetailDialog({ engineer, onOpenChange }: Props) {
   const nightShifts = periodShifts
     .filter((s) => s.shiftType === "Night")
     .reduce((a, s) => a + s.shiftCount, 0);
-  const earnings = engineer ? (dayShifts + nightShifts) * engineer.shiftRate : 0;
+  const summary = useMemo(
+    () =>
+      engineer
+        ? paymentSummary(engineer, periodShifts, periodExpenses)
+        : null,
+    [engineer, periodShifts, periodExpenses],
+  );
 
   const sites = useMemo(() => {
-    const map = new Map<string, { hours: number; visits: number; spend: number }>();
+    const map = new Map<string, { shifts: number; visits: number; spend: number }>();
     periodShifts.forEach((s) => {
-      const row = map.get(s.site) ?? { hours: 0, visits: 0, spend: 0 };
-      row.hours += s.shiftCount;
+      const row = map.get(s.site) ?? { shifts: 0, visits: 0, spend: 0 };
+      row.shifts += num(s.shiftCount);
       row.visits += 1;
       map.set(s.site, row);
     });
     periodExpenses.forEach((e) => {
-      const row = map.get(e.site) ?? { hours: 0, visits: 0, spend: 0 };
+      const row = map.get(e.site) ?? { shifts: 0, visits: 0, spend: 0 };
       row.spend += expenseTotal(e);
       map.set(e.site, row);
     });
-    return [...map.entries()].sort((a, b) => b[1].hours - a[1].hours);
+    return [...map.entries()].sort((a, b) => b[1].shifts - a[1].shifts);
   }, [periodShifts, periodExpenses]);
 
   return (
@@ -227,7 +238,7 @@ export function EngineerDetailDialog({ engineer, onOpenChange }: Props) {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="edit-rate">Hourly rate (£)</Label>
+                  <Label htmlFor="edit-rate">Shift rate (£)</Label>
                   <Input
                     id="edit-rate"
                     type="number"
@@ -235,6 +246,17 @@ export function EngineerDetailDialog({ engineer, onOpenChange }: Props) {
                     step="0.5"
                     value={rateDraft}
                     onChange={(e) => setRateDraft(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-paid">Paid amount (£)</Label>
+                  <Input
+                    id="edit-paid"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={paidDraft}
+                    onChange={(e) => setPaidDraft(e.target.value)}
                   />
                 </div>
                 <div className="flex gap-2 sm:col-span-2">
@@ -254,6 +276,7 @@ export function EngineerDetailDialog({ engineer, onOpenChange }: Props) {
                         sheetId: sheetDraft.trim(),
                         email: emailDraft.trim(),
                         shiftRate: rate,
+                        paidAmount: Math.max(num(paidDraft), 0),
                       });
                       setEditing(false);
                     }}
@@ -275,8 +298,11 @@ export function EngineerDetailDialog({ engineer, onOpenChange }: Props) {
                 { label: "Meals", value: gbp2(meals) },
                 { label: "Credit card", value: gbp2(card) },
                 { label: "VAT (20% incl.)", value: gbp2(vat) },
-                { label: "Shift earnings", value: gbp(earnings) },
                 { label: "Total reimbursable", value: gbp2(gross) },
+                { label: "Approved reimbursables", value: gbp2(summary?.reimbursables) },
+                { label: `VAT deducted (${num(engineer.vatRate)}%)`, value: gbp2(summary?.vatDeducted) },
+                { label: "Paid amount", value: gbp2(summary?.paid) },
+                { label: "To be paid", value: gbp2(summary?.toBePaid) },
               ].map((c) => (
                 <div key={c.label} className="surface-card p-4">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
@@ -296,7 +322,7 @@ export function EngineerDetailDialog({ engineer, onOpenChange }: Props) {
                   <TableRow>
                     <TableHead>Site</TableHead>
                     <TableHead className="text-right">Visits</TableHead>
-                    <TableHead className="text-right">Hours</TableHead>
+                    <TableHead className="text-right">Shifts</TableHead>
                     <TableHead className="text-right">Spend</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -305,7 +331,7 @@ export function EngineerDetailDialog({ engineer, onOpenChange }: Props) {
                     <TableRow key={site}>
                       <TableCell className="font-medium">{site}</TableCell>
                       <TableCell className="text-right">{v.visits}</TableCell>
-                      <TableCell className="text-right">{v.hours}</TableCell>
+                      <TableCell className="text-right">{v.shifts}</TableCell>
                       <TableCell className="text-right">{gbp2(v.spend)}</TableCell>
                     </TableRow>
                   ))}
@@ -322,39 +348,23 @@ export function EngineerDetailDialog({ engineer, onOpenChange }: Props) {
 
             <section className="surface-card overflow-x-auto">
               <p className="flex items-center gap-2 p-4 pb-2 text-sm font-bold uppercase tracking-[0.1em] text-muted-foreground">
+                <Pencil className="h-4 w-4" /> Amend shifts & own vehicle · {periodShifts.length}
+              </p>
+              <ShiftAmendTable shifts={periodShifts} />
+            </section>
+
+            <section className="surface-card overflow-hidden">
+              <p className="flex items-center gap-2 p-4 pb-2 text-sm font-bold uppercase tracking-[0.1em] text-muted-foreground">
+                <Receipt className="h-4 w-4" /> Engineer queries
+              </p>
+              <QueryList shifts={allShifts} />
+            </section>
+
+            <section className="surface-card overflow-x-auto">
+              <p className="flex items-center gap-2 p-4 pb-2 text-sm font-bold uppercase tracking-[0.1em] text-muted-foreground">
                 <Receipt className="h-4 w-4" /> Claims · {periodExpenses.length}
               </p>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="hidden sm:table-cell">Site</TableHead>
-                    <TableHead className="text-right">Fuel</TableHead>
-                    <TableHead className="text-right">Meals</TableHead>
-                    <TableHead className="text-right">Card</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {periodExpenses.slice(0, 40).map((e) => (
-                    <TableRow key={e.id}>
-                      <TableCell className="whitespace-nowrap">{e.date}</TableCell>
-                      <TableCell className="hidden max-w-[12rem] truncate sm:table-cell">{e.site}</TableCell>
-                      <TableCell className="text-right">{gbp2(e.fuel)}</TableCell>
-                      <TableCell className="text-right">{gbp2(e.meals)}</TableCell>
-                      <TableCell className="text-right">{gbp2(e.creditCard)}</TableCell>
-                      <TableCell className="text-right font-bold">{gbp2(expenseTotal(e))}</TableCell>
-                    </TableRow>
-                  ))}
-                  {periodExpenses.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
-                        No claims in this period.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+              <ClaimAmendTable expenses={periodExpenses} />
             </section>
           </>
         )}
