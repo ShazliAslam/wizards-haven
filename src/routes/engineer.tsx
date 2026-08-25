@@ -134,7 +134,7 @@ function EngineerDashboard() {
               Good day, {engineer.name.split(" ")[0]}
             </h1>
             <p className="text-sm text-muted-foreground">
-              {engineer.region} region · {gbp2(engineer.hourlyRate)}/hr
+              {engineer.region} region · {gbp2(engineer.shiftRate)}/shift
             </p>
           </div>
           <Badge className="shrink-0 bg-emerald/15 text-emerald hover:bg-emerald/15">
@@ -143,7 +143,7 @@ function EngineerDashboard() {
         </div>
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard icon={Clock} label="Hours this week" value={`${weekHours}h`} sub="Logged shifts" />
+          <StatCard icon={Clock} label="Shifts this week" value={String(weekShifts)} sub="Logged shifts" />
           <StatCard
             icon={Wallet}
             label="Claimed this week"
@@ -162,7 +162,7 @@ function EngineerDashboard() {
             icon={CreditCard}
             label="Est. monthly pay"
             value={gbp(monthPay)}
-            sub="Hours × base rate"
+            sub="Shifts × shift rate"
             tone="cyan"
           />
         </section>
@@ -433,7 +433,7 @@ function EngineerDashboard() {
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
-                      <p className="text-sm font-bold">{s.hours}h</p>
+                      <p className="text-sm font-bold">{s.shiftCount} shift{s.shiftCount > 1 ? "s" : ""}</p>
                       <StatusPill status={s.status} />
                     </div>
                   </li>
