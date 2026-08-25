@@ -113,7 +113,7 @@ function AdminDashboard() {
   }, [expenses, q, site, status, from, to]);
 
   const trend = useMemo(() => {
-    const out: { day: string; Expenses: number; Hours: number }[] = [];
+    const out: { day: string; Expenses: number; Shifts: number }[] = [];
     for (let i = 13; i >= 0; i--) {
       const d = new Date();
       d.setUTCDate(d.getUTCDate() - i);
@@ -123,7 +123,7 @@ function AdminDashboard() {
         Expenses: Math.round(
           expenses.filter((e) => e.date === key).reduce((a, e) => a + expenseTotal(e), 0),
         ),
-        Hours: shifts.filter((s) => s.date === key).reduce((a, s) => a + s.hours, 0),
+        Shifts: shifts.filter((s) => s.date === key).reduce((a, s) => a + s.shiftCount, 0),
       });
     }
     return out;
@@ -151,13 +151,9 @@ function AdminDashboard() {
     () =>
       engineers.map((eng) => {
         const es = shifts.filter((s) => s.engineerId === eng.id && daysAgo(s.date) < 28);
-        const dayHours = es.filter((s) => s.shiftType === "Day").reduce((a, s) => a + s.hours, 0);
-        const nightHours = es.filter((s) => s.shiftType === "Night").reduce((a, s) => a + s.hours, 0);
-        const base = dayHours * eng.hourlyRate + nightHours * eng.hourlyRate * 1.15;
-        const reimb = expenses
-          .filter((e) => e.engineerId === eng.id && e.status === "Approved")
-          .reduce((a, e) => a + expenseTotal(e), 0);
-        return { eng, dayHours, nightHours, base, reimb, gross: base + reimb };
+        const ex = expenses.filter((e) => e.engineerId === eng.id);
+        const summary = paymentSummary(eng, es, ex);
+        return { eng, summary, gross: summary.toBePaid };
       }),
     [engineers, shifts, expenses],
   );
