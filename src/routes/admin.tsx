@@ -187,7 +187,7 @@ function AdminDashboard() {
         <section className="grid gap-6 lg:grid-cols-3">
           <div className="surface-card p-5 lg:col-span-2">
             <h2 className="text-sm font-bold uppercase tracking-[0.1em] text-muted-foreground">
-              Expense & hours trend
+              Expense & shift trend
             </h2>
             <div className="mt-4 h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
@@ -198,7 +198,7 @@ function AdminDashboard() {
                   <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--color-border)", fontSize: 12 }} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Line type="monotone" dataKey="Expenses" stroke="var(--color-brand)" strokeWidth={2.5} dot={false} />
-                  <Line type="monotone" dataKey="Hours" stroke="var(--color-emerald)" strokeWidth={2.5} dot={false} />
+                  <Line type="monotone" dataKey="Shifts" stroke="var(--color-emerald)" strokeWidth={2.5} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
