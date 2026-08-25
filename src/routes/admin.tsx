@@ -390,12 +390,12 @@ function AdminDashboard() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Engineer</TableHead>
-                    <TableHead className="hidden sm:table-cell">Rate</TableHead>
-                    <TableHead className="text-right">Day h</TableHead>
-                    <TableHead className="text-right">Night h</TableHead>
-                    <TableHead className="hidden text-right md:table-cell">Base pay</TableHead>
+                    <TableHead className="hidden sm:table-cell">Shift rate</TableHead>
+                    <TableHead className="text-right">Shifts</TableHead>
+                    <TableHead className="text-right">Own vehicle</TableHead>
+                    <TableHead className="hidden text-right md:table-cell">VAT</TableHead>
                     <TableHead className="hidden text-right md:table-cell">Reimburse</TableHead>
-                    <TableHead className="text-right">Gross</TableHead>
+                    <TableHead className="text-right">To be paid</TableHead>
                     <TableHead className="text-right">Status</TableHead>
                   </TableRow>
                 </TableHeader>
