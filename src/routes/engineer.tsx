@@ -428,29 +428,6 @@ function EngineerDashboard() {
               <WeeklyShiftBlocks shifts={myShifts} shiftRate={engineer.shiftRate} />
             </TabsContent>
 
-            <TabsContent value="__legacy_shifts" className="m-0">
-              <ul className="divide-y divide-border">
-                {myShifts.slice(0, 12).map((s) => (
-                  <li key={s.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 p-4">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold">{s.site}</p>
-                      <p className="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground">
-                        <span className="inline-flex items-center gap-1">
-                          <CalendarDays className="h-3 w-3" /> {s.date}
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <MapPin className="h-3 w-3" /> {s.shiftType} shift
-                        </span>
-                      </p>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p className="text-sm font-bold">{s.shiftCount} shift{s.shiftCount > 1 ? "s" : ""}</p>
-                      <StatusPill status={s.status} />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </TabsContent>
           </Tabs>
         </section>
 
