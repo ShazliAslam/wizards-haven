@@ -34,6 +34,7 @@ import {
   gbp,
   gbp2,
 } from "@/lib/mock-data";
+import { paymentSummary } from "@/lib/payroll";
 import { generatePayrollPdf } from "@/lib/pdf";
 import { AppHeader } from "@/components/AppHeader";
 import { StatCard } from "@/components/StatCard";
@@ -412,11 +413,11 @@ function AdminDashboard() {
                         </button>
                         <span className="block text-xs text-muted-foreground">{p.eng.region}</span>
                       </TableCell>
-                      <TableCell className="hidden sm:table-cell">{gbp2(p.eng.hourlyRate)}</TableCell>
-                      <TableCell className="text-right">{p.dayHours}</TableCell>
-                      <TableCell className="text-right">{p.nightHours}</TableCell>
-                      <TableCell className="hidden text-right md:table-cell">{gbp(p.base)}</TableCell>
-                      <TableCell className="hidden text-right md:table-cell">{gbp(p.reimb)}</TableCell>
+                      <TableCell className="hidden sm:table-cell">{gbp2(p.eng.shiftRate)}</TableCell>
+                      <TableCell className="text-right">{p.summary.shiftCount}</TableCell>
+                      <TableCell className="text-right">{p.summary.ownVehicleDays}</TableCell>
+                      <TableCell className="hidden text-right md:table-cell">{gbp(p.summary.vatDeducted)}</TableCell>
+                      <TableCell className="hidden text-right md:table-cell">{gbp(p.summary.reimbursables)}</TableCell>
                       <TableCell className="text-right font-bold">{gbp(p.gross)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
