@@ -6,7 +6,6 @@ import {
   CreditCard,
   Download,
   Fuel,
-  MapPin,
   ReceiptText,
   UploadCloud,
   Utensils,

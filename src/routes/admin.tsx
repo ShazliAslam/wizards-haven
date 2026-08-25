@@ -346,7 +346,7 @@ function AdminDashboard() {
             <div className="surface-card grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 p-4">
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  Payroll run · 28 days
+                  To be paid · 28 days
                 </p>
                 <p className="mt-1 text-2xl font-extrabold tracking-tight">{gbp(payrollTotal)}</p>
                 <p className="text-xs text-muted-foreground">
@@ -373,7 +373,7 @@ function AdminDashboard() {
                       "Last 28 days",
                     );
                     toast.success("Payroll PDF downloaded", {
-                      description: `${engineers.length} engineers · ${gbp(payrollTotal)} gross`,
+                      description: `${engineers.length} engineers · ${gbp(payrollTotal)} to be paid`,
                     });
                   } catch {
                     toast.error("Could not generate the payroll PDF. Please try again.");
@@ -396,6 +396,7 @@ function AdminDashboard() {
                     <TableHead className="text-right">Own vehicle</TableHead>
                     <TableHead className="hidden text-right md:table-cell">VAT</TableHead>
                     <TableHead className="hidden text-right md:table-cell">Reimburse</TableHead>
+                    <TableHead className="hidden text-right md:table-cell">Paid</TableHead>
                     <TableHead className="text-right">To be paid</TableHead>
                     <TableHead className="text-right">Status</TableHead>
                   </TableRow>
@@ -418,7 +419,8 @@ function AdminDashboard() {
                       <TableCell className="text-right">{p.summary.ownVehicleDays}</TableCell>
                       <TableCell className="hidden text-right md:table-cell">{gbp(p.summary.vatDeducted)}</TableCell>
                       <TableCell className="hidden text-right md:table-cell">{gbp(p.summary.reimbursables)}</TableCell>
-                      <TableCell className="text-right font-bold">{gbp(p.gross)}</TableCell>
+                      <TableCell className="hidden text-right md:table-cell">{gbp(p.summary.paid)}</TableCell>
+                      <TableCell className="text-right font-bold">{gbp2(p.summary.toBePaid)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
                           <span className="hidden text-xs text-muted-foreground sm:inline">
