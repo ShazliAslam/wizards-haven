@@ -1,6 +1,7 @@
 import {
   OWN_VEHICLE_WEEKLY_CAP,
   expenseTotal,
+  num,
   type Engineer,
   type ExpenseEntry,
   type ShiftLog,
@@ -44,7 +45,8 @@ export function monthLabel(key: string) {
   });
 }
 
-export const totalShifts = (shifts: ShiftLog[]) => shifts.reduce((a, s) => a + s.shiftCount, 0);
+export const totalShifts = (shifts: ShiftLog[]) =>
+  (shifts ?? []).reduce((a, s) => a + num(s?.shiftCount), 0);
 
 /** Own-vehicle days, capped at 7 per calendar week. */
 export function ownVehicleDays(shifts: ShiftLog[]): number {
@@ -84,13 +86,15 @@ export function paymentSummary(
   expenses: ExpenseEntry[],
 ): PaymentSummary {
   const count = totalShifts(shifts);
-  const grossEarned = count * engineer.shiftRate;
-  const vatDeducted = grossEarned * (engineer.vatRate / 100);
+  const rate = num(engineer?.shiftRate);
+  const vatPct = num(engineer?.vatRate);
+  const grossEarned = count * rate;
+  const vatDeducted = grossEarned * (vatPct / 100);
   const netEarned = grossEarned - vatDeducted;
-  const reimbursables = expenses
-    .filter((e) => e.status === "Approved")
+  const reimbursables = (expenses ?? [])
+    .filter((e) => e?.status === "Approved")
     .reduce((a, e) => a + expenseTotal(e), 0);
-  const paid = engineer.paidAmount || 0;
+  const paid = num(engineer?.paidAmount);
   return {
     shiftCount: count,
     grossEarned,
@@ -130,7 +134,7 @@ export function groupByWeek(shifts: ShiftLog[], shiftRate: number): WeekBlock[] 
         shifts: sorted,
         shiftCount: count,
         ownVehicle: ownVehicleDays(sorted),
-        earnings: count * shiftRate,
+        earnings: count * num(shiftRate),
       };
     })
     .sort((a, b) => (a.start < b.start ? 1 : -1));
