@@ -74,16 +74,16 @@ function EngineerDashboard() {
     [expenses, engineer.id],
   );
 
-  const weekHours = myShifts
+  const weekShifts = myShifts
     .filter((s) => daysAgo(s.date) < 7)
-    .reduce((a, s) => a + s.hours, 0);
+    .reduce((a, s) => a + s.shiftCount, 0);
   const weekExpenses = myExpenses
     .filter((e) => daysAgo(e.date) < 7)
     .reduce((a, e) => a + expenseTotal(e), 0);
   const pending = myExpenses.filter((e) => e.status === "Pending").length;
   const monthPay =
-    myShifts.filter((s) => daysAgo(s.date) < 28).reduce((a, s) => a + s.hours, 0) *
-    engineer.hourlyRate;
+    myShifts.filter((s) => daysAgo(s.date) < 28).reduce((a, s) => a + s.shiftCount, 0) *
+    engineer.shiftRate;
 
   const chartData = useMemo(() => {
     const buckets: Record<string, { day: string; Fuel: number; Meals: number; Card: number }> = {};
@@ -112,7 +112,8 @@ function EngineerDashboard() {
   const [sDate, setSDate] = useState(today());
   const [sSite, setSSite] = useState(SITES[0]!);
   const [sType, setSType] = useState<"Day" | "Night">("Day");
-  const [sHours, setSHours] = useState("8");
+  const [sCount, setSCount] = useState("1");
+  const [sOwnVehicle, setSOwnVehicle] = useState(false);
 
   // Expense form
   const [eDate, setEDate] = useState(today());
@@ -175,14 +176,21 @@ function EngineerDashboard() {
               className="mt-4 grid gap-4 sm:grid-cols-2"
               onSubmit={(ev) => {
                 ev.preventDefault();
-                const hours = Number(sHours);
-                if (!hours || hours <= 0 || hours > 24) {
-                  toast.error("Enter valid hours between 1 and 24.");
+                const shiftCount = Number(sCount);
+                if (!shiftCount || shiftCount < 1 || shiftCount > 3) {
+                  toast.error("Enter between 1 and 3 shifts for a day.");
                   return;
                 }
-                addShift({ date: sDate, site: sSite, shiftType: sType, hours });
+                addShift({
+                  date: sDate,
+                  site: sSite,
+                  shiftType: sType,
+                  shiftCount,
+                  ownVehicle: sOwnVehicle,
+                });
                 toast.success("Shift submitted for approval.");
-                setSHours("8");
+                setSCount("1");
+                setSOwnVehicle(false);
               }}
             >
               <div className="space-y-2">
@@ -211,17 +219,26 @@ function EngineerDashboard() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="shours">Total hours</Label>
+                <Label htmlFor="scount">Shifts logged</Label>
                 <Input
-                  id="shours"
+                  id="scount"
                   type="number"
                   min="1"
-                  max="24"
-                  step="0.5"
-                  value={sHours}
-                  onChange={(e) => setSHours(e.target.value)}
+                  max="3"
+                  step="1"
+                  value={sCount}
+                  onChange={(e) => setSCount(e.target.value)}
                 />
               </div>
+              <label className="flex items-center gap-3 rounded-md border border-border p-3 sm:col-span-2">
+                <Input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={sOwnVehicle}
+                  onChange={(e) => setSOwnVehicle(e.target.checked)}
+                />
+                <span className="text-sm">Own vehicle used (daily allowance)</span>
+              </label>
               <Button type="submit" className="bg-brand text-white hover:bg-brand-deep sm:col-span-2">
                 Submit shift
               </Button>
