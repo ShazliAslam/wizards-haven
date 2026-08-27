@@ -58,7 +58,7 @@ function SignIn() {
             </span>
           </h1>
           <p className="mt-5 max-w-md text-sm leading-relaxed text-white/70">
-            Engineers log site hours and receipts from the field. Leadership approves claims and
+            Engineers log site shifts and receipts from the field. Leadership approves claims and
             generates payroll across all {ENGINEERS.length} engineers.
           </p>
           <dl className="mt-8 grid grid-cols-2 gap-4 sm:max-w-md">
