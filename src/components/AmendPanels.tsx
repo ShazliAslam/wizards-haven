@@ -238,6 +238,30 @@ export function ClaimAmendTable({ expenses }: { expenses: ExpenseEntry[] }) {
   );
 }
 
+/** Renders query text with any http(s) links turned into clickable anchors. */
+function Linkified({ text }: { text: string }) {
+  const parts = text.split(/(https?:\/\/[^\s]+)/g);
+  return (
+    <p className="whitespace-pre-wrap break-words text-sm">
+      {parts.map((part, i) =>
+        /^https?:\/\//.test(part) ? (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="font-medium text-brand underline underline-offset-2 hover:text-brand-deep"
+          >
+            {part}
+          </a>
+        ) : (
+          <span key={i}>{part}</span>
+        ),
+      )}
+    </p>
+  );
+}
+
 /** Engineer-raised queries against shifts, for Admin/CEO review. */
 export function QueryList({ shifts }: { shifts: ShiftLog[] }) {
   const queries = shifts.filter((s) => (s.comment ?? "").trim().length > 0);
