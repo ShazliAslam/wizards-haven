@@ -67,7 +67,15 @@ interface SessionValue {
   syncEngineerFromSheet: (id: string) => Promise<void>;
 }
 
-const Ctx = createContext<SessionValue | null>(null);
+// Kept on globalThis so a hot-module reload can't create a second context
+// instance (provider from the old module, hook from the new one -> false
+// "must be used inside SessionProvider" crash).
+const globalStore = globalThis as typeof globalThis & {
+  __weactive9SessionCtx?: React.Context<SessionValue | null>;
+};
+const Ctx =
+  globalStore.__weactive9SessionCtx ??
+  (globalStore.__weactive9SessionCtx = createContext<SessionValue | null>(null));
 
 const STORAGE_KEY = "weactive9.engineers";
 
