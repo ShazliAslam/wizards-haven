@@ -39,7 +39,7 @@ function SignIn() {
   const selected = engineers.find((e) => e.id === engineerId) ?? engineers[0] ?? CURRENT_ENGINEER;
 
   const go = (role: "engineer" | "admin") => {
-    signIn(role, engineerId);
+    signIn(role, selected.id);
     router.navigate({ to: role === "admin" ? "/admin" : "/engineer" });
   };
 
