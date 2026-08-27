@@ -1,12 +1,12 @@
 import type { Engineer, ExpenseEntry, ShiftLog } from "@/lib/mock-data";
-import { expenseTotal } from "@/lib/mock-data";
+import { expenseTotal, num } from "@/lib/mock-data";
 import { ownVehicleDays, paymentSummary, totalShifts } from "@/lib/payroll";
 
 const NAVY: [number, number, number] = [16, 34, 66];
 const EMERALD: [number, number, number] = [16, 145, 105];
 
-const money = (n: number) =>
-  `GBP ${n.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const money = (value: unknown) =>
+  `GBP ${num(value).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 async function newDoc(title: string, subtitle: string) {
   const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
@@ -89,11 +89,11 @@ export async function generateEngineerStatementPdf(
     theme: "plain",
     styles: { fontSize: 10, cellPadding: 6 },
     body: [
-      ["Total shifts logged", `${sum.shiftCount}`],
+      ["Total shifts logged", `${num(sum.shiftCount)}`],
       ["Shift rate", money(engineer.shiftRate) + " / shift"],
-      ["Own-vehicle days (max 7/week)", `${sum.ownVehicleDays}`],
+      ["Own-vehicle days (max 7/week)", `${num(sum.ownVehicleDays)}`],
       ["Gross shift earnings", money(sum.grossEarned)],
-      [`VAT deduction (${engineer.vatRate}%)`, `- ${money(sum.vatDeducted)}`],
+      [`VAT deduction (${num(engineer.vatRate)}%)`, `- ${money(sum.vatDeducted)}`],
       ["Approved reimbursables", money(sum.reimbursables)],
       ["Paid to date", `- ${money(sum.paid)}`],
       ["Net to be paid", money(sum.toBePaid)],
@@ -110,7 +110,7 @@ export async function generateEngineerStatementPdf(
       s.date,
       s.site,
       s.shiftType,
-      `${s.shiftCount}`,
+      `${num(s.shiftCount)}`,
       s.ownVehicle ? "Yes" : "-",
       s.status,
     ]),
@@ -184,7 +184,7 @@ export async function generatePayrollPdf(rows: PayrollRow[], periodLabel: string
     `${periodLabel} · ${rows.length} engineers`,
   );
 
-  const sumOf = (k: keyof PayrollRow) => rows.reduce((a, r) => a + Number(r[k] ?? 0), 0);
+  const sumOf = (k: keyof PayrollRow) => rows.reduce((a, r) => a + num(r[k]), 0);
   const grossTotal = sumOf("gross");
   const vatTotal = sumOf("vat");
   const reimbTotal = sumOf("reimb");
@@ -215,8 +215,8 @@ export async function generatePayrollPdf(rows: PayrollRow[], periodLabel: string
       r.name,
       r.region,
       money(r.rate),
-      `${r.shifts}`,
-      `${r.ownVehicle}`,
+      `${num(r.shifts)}`,
+      `${num(r.ownVehicle)}`,
       money(r.gross),
       money(r.vat),
       money(r.reimb),
@@ -273,7 +273,7 @@ export async function generateInvoicePdf(opts: {
   );
 
   const total = (k: keyof InvoiceLine) =>
-    opts.lines.reduce((a, l) => a + Number(l[k] ?? 0), 0);
+    opts.lines.reduce((a, l) => a + num(l[k]), 0);
 
   let startY = 150;
   autoTable(doc, {
@@ -281,7 +281,7 @@ export async function generateInvoicePdf(opts: {
     theme: "plain",
     styles: { fontSize: 10, cellPadding: 6 },
     body: [
-      ["Shifts invoiced", `${total("shifts")}`],
+      ["Shifts invoiced", `${num(total("shifts"))}`],
       ["Gross shift value", money(total("gross"))],
       ["VAT deducted", `- ${money(total("vat"))}`],
       ["Reimbursables", money(total("reimb"))],
@@ -297,12 +297,12 @@ export async function generateInvoicePdf(opts: {
     head: [["Engineer", "Shifts", "Gross", "VAT deducted", "Reimbursables", "Net payable"]],
     body: [...opts.lines.map((l) => [
       l.label,
-      `${l.shifts}`,
+      `${num(l.shifts)}`,
       money(l.gross),
       money(l.vat),
       money(l.reimb),
       money(l.net),
-    ]), ["Total", `${total("shifts")}`, money(total("gross")), money(total("vat")), money(total("reimb")), money(total("net"))]],
+    ]), ["Total", `${num(total("shifts"))}`, money(total("gross")), money(total("vat")), money(total("reimb")), money(total("net"))]],
     didParseCell: (d) => {
       if (d.section === "body" && d.row.index === opts.lines.length) {
         d.cell.styles.fontStyle = "bold";

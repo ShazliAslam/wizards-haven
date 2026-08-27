@@ -2,7 +2,6 @@ import { Link, useRouter } from "@tanstack/react-router";
 import { HardHat, LogOut, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useSession } from "@/lib/session";
-import { ENGINEERS } from "@/lib/mock-data";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -13,7 +12,7 @@ import {
 } from "@/components/ui/select";
 
 export function AppHeader({ variant }: { variant: "engineer" | "admin" }) {
-  const { signOut, engineer, engineerId, setEngineerId } = useSession();
+  const { signOut, engineer, engineerId, setEngineerId, engineers } = useSession();
   const router = useRouter();
 
   return (
@@ -43,7 +42,7 @@ export function AppHeader({ variant }: { variant: "engineer" | "admin" }) {
               value={engineerId}
               onValueChange={(id) => {
                 setEngineerId(id);
-                const next = ENGINEERS.find((e) => e.id === id);
+                const next = engineers.find((e) => e.id === id);
                 if (next) toast.success(`Switched to ${next.name}`);
               }}
             >
@@ -51,7 +50,7 @@ export function AppHeader({ variant }: { variant: "engineer" | "admin" }) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="max-h-72">
-                {ENGINEERS.map((e) => (
+                {engineers.map((e) => (
                   <SelectItem key={e.id} value={e.id}>
                     {e.name}
                   </SelectItem>

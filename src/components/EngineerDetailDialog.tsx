@@ -7,6 +7,7 @@ import {
   gbp2,
   expenseTotal,
   num,
+  OWN_VEHICLE_WEEKLY_CAP,
   vatPortion,
   type Engineer,
   type ExpenseEntry,
@@ -16,6 +17,7 @@ import { generateEngineerStatementPdf } from "@/lib/pdf";
 import { useSession } from "@/lib/session";
 import { paymentSummary } from "@/lib/payroll";
 import { ClaimAmendTable, QueryList, ShiftAmendTable } from "@/components/AmendPanels";
+import { DocumentManager } from "@/components/DocumentManager";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -303,6 +305,10 @@ export function EngineerDetailDialog({ engineer, onOpenChange }: Props) {
                 { label: `VAT deducted (${num(engineer.vatRate)}%)`, value: gbp2(summary?.vatDeducted) },
                 { label: "Paid amount", value: gbp2(summary?.paid) },
                 { label: "To be paid", value: gbp2(summary?.toBePaid) },
+                {
+                  label: "Own vehicle days",
+                  value: `${num(summary?.ownVehicleDays)}/${OWN_VEHICLE_WEEKLY_CAP} days`,
+                },
               ].map((c) => (
                 <div key={c.label} className="surface-card p-4">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
@@ -352,6 +358,8 @@ export function EngineerDetailDialog({ engineer, onOpenChange }: Props) {
               </p>
               <ShiftAmendTable shifts={periodShifts} />
             </section>
+
+            <DocumentManager engineer={engineer} />
 
             <section className="surface-card overflow-hidden">
               <p className="flex items-center gap-2 p-4 pb-2 text-sm font-bold uppercase tracking-[0.1em] text-muted-foreground">
