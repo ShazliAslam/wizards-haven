@@ -32,11 +32,11 @@ export const Route = createFileRoute("/")({
 });
 
 function SignIn() {
-  const { signIn } = useSession();
+  const { signIn, engineers } = useSession();
   const router = useRouter();
 
   const [engineerId, setEngineerId] = useState(CURRENT_ENGINEER.id);
-  const selected = ENGINEERS.find((e) => e.id === engineerId) ?? CURRENT_ENGINEER;
+  const selected = engineers.find((e) => e.id === engineerId) ?? engineers[0] ?? CURRENT_ENGINEER;
 
   const go = (role: "engineer" | "admin") => {
     signIn(role, engineerId);
@@ -59,7 +59,7 @@ function SignIn() {
           </h1>
           <p className="mt-5 max-w-md text-sm leading-relaxed text-white/70">
             Engineers log site shifts and receipts from the field. Leadership approves claims and
-            generates payroll across all {ENGINEERS.length} engineers.
+            generates payroll across all {engineers.length} engineers.
           </p>
           <dl className="mt-8 grid grid-cols-2 gap-4 sm:max-w-md">
             {[
@@ -95,7 +95,7 @@ function SignIn() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="max-h-72">
-                  {ENGINEERS.map((e) => (
+                  {engineers.map((e) => (
                     <SelectItem key={e.id} value={e.id}>
                       {e.name} · {e.region}
                     </SelectItem>
