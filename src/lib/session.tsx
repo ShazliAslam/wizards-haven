@@ -72,7 +72,7 @@ interface SessionValue {
 // instance (provider from the old module, hook from the new one -> false
 // "must be used inside SessionProvider" crash).
 const globalStore = globalThis as typeof globalThis & {
-  __weactive9SessionCtx?: React.Context<SessionValue | null>;
+  __weactive9SessionCtx?: Context<SessionValue | null>;
 };
 const Ctx =
   globalStore.__weactive9SessionCtx ??
