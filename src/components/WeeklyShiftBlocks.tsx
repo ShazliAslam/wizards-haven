@@ -16,7 +16,7 @@ export function WeeklyShiftBlocks({
 }) {
   const { commentOnShift } = useSession();
   const weeks = groupByWeek(shifts, shiftRate);
-  const [openWeek, setOpenWeek] = useState<string | null>(weeks[0]?.key ?? null);
+  const [openWeek, setOpenWeek] = useState<string | null>(null);
   const [queryFor, setQueryFor] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
 
