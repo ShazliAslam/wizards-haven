@@ -281,7 +281,7 @@ export function QueryList({ shifts }: { shifts: ShiftLog[] }) {
             <span className="truncate">{s.site}</span>
             {s.commentAt && <span>raised {new Date(s.commentAt).toLocaleString("en-GB")}</span>}
           </p>
-          <p className="whitespace-pre-wrap break-words text-sm">{s.comment}</p>
+          <Linkified text={s.comment ?? ""} />
         </li>
       ))}
     </ul>
