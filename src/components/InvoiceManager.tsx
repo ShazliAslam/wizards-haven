@@ -7,6 +7,7 @@ import { monthKey, monthLabel, totalShifts, weekKey, weekRangeLabel } from "@/li
 import { generateInvoicePdf } from "@/lib/pdf";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -74,18 +75,21 @@ export function InvoiceManager() {
 
   return (
     <div className="space-y-4">
-      <div className="surface-card grid gap-3 p-4 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-end">
-        <div className="space-y-1.5">
-          <Label className="text-xs">View</Label>
-          <Select value={granularity} onValueChange={(v) => { setGranularity(v as Granularity); setBucket(""); }}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Weekly">Weekly</SelectItem>
-              <SelectItem value="Monthly">Monthly</SelectItem>
-              <SelectItem value="Yearly">Yearly</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+      <Tabs
+        value={granularity}
+        onValueChange={(v) => {
+          setGranularity(v as Granularity);
+          setBucket("");
+        }}
+      >
+        <TabsList>
+          <TabsTrigger value="Weekly">Weekly</TabsTrigger>
+          <TabsTrigger value="Monthly">Monthly</TabsTrigger>
+          <TabsTrigger value="Yearly">Yearly</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      <div className="surface-card grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
         <div className="space-y-1.5">
           <Label className="text-xs">Period</Label>
           <Select value={active} onValueChange={setBucket}>
