@@ -7,6 +7,7 @@ import { monthKey, monthLabel, totalShifts, weekKey, weekRangeLabel } from "@/li
 import { generateInvoicePdf } from "@/lib/pdf";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
