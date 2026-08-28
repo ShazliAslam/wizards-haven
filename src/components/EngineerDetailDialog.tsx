@@ -15,7 +15,7 @@ import {
 } from "@/lib/mock-data";
 import { generateEngineerStatementPdf } from "@/lib/pdf";
 import { useSession } from "@/lib/session";
-import { paymentSummary } from "@/lib/payroll";
+import { paymentSummary, weekKey } from "@/lib/payroll";
 import { ClaimAmendTable, QueryList, ShiftAmendTable } from "@/components/AmendPanels";
 import { DocumentManager } from "@/components/DocumentManager";
 import { Button } from "@/components/ui/button";
@@ -120,6 +120,17 @@ export function EngineerDetailDialog({ engineer, onOpenChange }: Props) {
         : null,
     [engineer, periodShifts, periodExpenses],
   );
+
+  const latestWeekVehicleDays = useMemo(() => {
+    const vehicle = periodShifts.filter((s) => s.ownVehicle);
+    if (vehicle.length === 0) return 0;
+    const latest = vehicle.reduce((a, s) => (s.date > a ? s.date : a), vehicle[0]!.date);
+    const wk = weekKey(latest);
+    return Math.min(
+      new Set(vehicle.filter((s) => weekKey(s.date) === wk).map((s) => s.date)).size,
+      OWN_VEHICLE_WEEKLY_CAP,
+    );
+  }, [periodShifts]);
 
   const sites = useMemo(() => {
     const map = new Map<string, { shifts: number; visits: number; spend: number }>();
@@ -306,8 +317,8 @@ export function EngineerDetailDialog({ engineer, onOpenChange }: Props) {
                 { label: "Paid amount", value: gbp2(summary?.paid) },
                 { label: "To be paid", value: gbp2(summary?.toBePaid) },
                 {
-                  label: "Own vehicle days",
-                  value: `${num(summary?.ownVehicleDays)}/${OWN_VEHICLE_WEEKLY_CAP} days`,
+                  label: `Own vehicle · latest week (${num(summary?.ownVehicleDays)} total)`,
+                  value: `${latestWeekVehicleDays}/${OWN_VEHICLE_WEEKLY_CAP} days`,
                 },
               ].map((c) => (
                 <div key={c.label} className="surface-card p-4">
