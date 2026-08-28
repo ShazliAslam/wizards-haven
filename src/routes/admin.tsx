@@ -52,6 +52,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { InvoiceManager } from "@/components/InvoiceManager";
 import {
   Table,
   TableBody,
@@ -245,6 +246,7 @@ function AdminDashboard() {
           <TabsList>
             <TabsTrigger value="claims">Expense claims</TabsTrigger>
             <TabsTrigger value="payroll">Payroll</TabsTrigger>
+            <TabsTrigger value="invoices">Company invoices</TabsTrigger>
           </TabsList>
 
           <TabsContent value="claims" className="m-0 space-y-4">
@@ -438,6 +440,10 @@ function AdminDashboard() {
                 </TableBody>
               </Table>
             </div>
+          </TabsContent>
+
+          <TabsContent value="invoices" className="m-0">
+            <InvoiceManager />
           </TabsContent>
         </Tabs>
 
