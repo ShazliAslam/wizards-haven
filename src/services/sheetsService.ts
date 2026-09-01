@@ -212,3 +212,80 @@ async function append(
     return { synced: false, error };
   }
 }
+
+/* ------------------------------------------------------------------ *
+ * WeActive9_Payroll_Sync — dedicated financial payout sheet.
+ * Rows are matched to engineers by Engineer Email and are used ONLY for
+ * Paid Amount / To Be Paid / Payout History. They are never mapped into
+ * shift logs, expense claims or the Sites Visited table.
+ * ------------------------------------------------------------------ */
+
+export const PAYROLL_SYNC_TAB = "WeActive9_Payroll_Sync";
+/** Date | Engineer Email | Paid Amount | Payment Method | Transaction Ref | Notes */
+export const PAYROLL_SYNC_RANGE = `${PAYROLL_SYNC_TAB}!A2:F`;
+
+export interface PayoutLog {
+  date: string;
+  email: string;
+  amount: number;
+  method: string;
+  reference: string;
+  notes: string;
+}
+
+const money = (v?: string) => {
+  const n = Number(String(v ?? "").replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+};
+
+/**
+ * Read payout rows for one engineer email from WeActive9_Payroll_Sync.
+ * Looks in the engineer's linked sheet first, then the company sheet.
+ */
+export async function fetchPayoutLogs(
+  email: string,
+  engineerSheetId?: string,
+): Promise<{ payouts: PayoutLog[]; paid: number; error?: string }> {
+  const target = (email ?? "").trim().toLowerCase();
+  if (!target) return { payouts: [], paid: 0 };
+
+  const sources: (string | undefined)[] = engineerSheetId
+    ? [parseSpreadsheetId(engineerSheetId), undefined]
+    : [undefined];
+
+  const seen = new Set<string>();
+  const payouts: PayoutLog[] = [];
+  let error: string | undefined;
+
+  for (const spreadsheetId of sources) {
+    try {
+      const res = await readSheetRange({
+        data: { range: PAYROLL_SYNC_RANGE, ...(spreadsheetId ? { spreadsheetId } : {}) },
+      });
+      if (!res.configured) continue;
+      for (const r of res.values) {
+        const rowEmail = (r[1] ?? "").trim().toLowerCase();
+        if (!rowEmail || rowEmail !== target) continue;
+        const log: PayoutLog = {
+          date: r[0] ?? "",
+          email: rowEmail,
+          amount: money(r[2]),
+          method: r[3] ?? "",
+          reference: r[4] ?? "",
+          notes: r[5] ?? "",
+        };
+        const key = `${log.date}|${log.amount}|${log.reference}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        payouts.push(log);
+      }
+    } catch (err) {
+      // A missing payroll tab must never break the rest of the sync.
+      error = err instanceof Error ? err.message : "Unknown Google Sheets error";
+    }
+  }
+
+  payouts.sort((a, b) => (a.date < b.date ? 1 : -1));
+  const paid = payouts.reduce((a, p) => a + money(String(p.amount)), 0);
+  return { payouts, paid, ...(error && payouts.length === 0 ? { error } : {}) };
+}
