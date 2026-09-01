@@ -26,6 +26,7 @@ import { WeeklyShiftBlocks } from "@/components/WeeklyShiftBlocks";
 import { PaymentBreakdownDialog } from "@/components/PaymentBreakdownDialog";
 import { AppHeader } from "@/components/AppHeader";
 import { StatCard } from "@/components/StatCard";
+import { PayoutHistory } from "@/components/PayoutHistory";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -161,6 +162,13 @@ function EngineerDashboard() {
             value={String(pending)}
             sub="Awaiting approval"
             tone="warning"
+          />
+          <StatCard
+            icon={Wallet}
+            label="Paid amount"
+            value={gbp2(summary.paid)}
+            sub="Synced from payroll sheet"
+            tone="emerald"
           />
           <button type="button" className="text-left" onClick={() => setBreakdownOpen(true)}>
             <StatCard
@@ -429,6 +437,8 @@ function EngineerDashboard() {
 
           </Tabs>
         </section>
+
+        <PayoutHistory engineer={engineer} />
 
         <PaymentBreakdownDialog
           engineer={engineer}
