@@ -18,6 +18,7 @@ import { useSession } from "@/lib/session";
 import { paymentSummary, weekKey } from "@/lib/payroll";
 import { ClaimAmendTable, QueryList, ShiftAmendTable } from "@/components/AmendPanels";
 import { DocumentManager } from "@/components/DocumentManager";
+import { PayoutHistory } from "@/components/PayoutHistory";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -135,12 +136,14 @@ export function EngineerDetailDialog({ engineer, onOpenChange }: Props) {
   const sites = useMemo(() => {
     const map = new Map<string, { shifts: number; visits: number; spend: number }>();
     periodShifts.forEach((s) => {
+      if (!s.site) return; // payout/financial rows carry no site
       const row = map.get(s.site) ?? { shifts: 0, visits: 0, spend: 0 };
       row.shifts += num(s.shiftCount);
       row.visits += 1;
       map.set(s.site, row);
     });
     periodExpenses.forEach((e) => {
+      if (!e.site) return;
       const row = map.get(e.site) ?? { shifts: 0, visits: 0, spend: 0 };
       row.spend += expenseTotal(e);
       map.set(e.site, row);
@@ -329,6 +332,8 @@ export function EngineerDetailDialog({ engineer, onOpenChange }: Props) {
                 </div>
               ))}
             </section>
+
+            <PayoutHistory engineer={engineer} />
 
             <section className="surface-card overflow-x-auto">
               <p className="flex items-center gap-2 p-4 pb-2 text-sm font-bold uppercase tracking-[0.1em] text-muted-foreground">
