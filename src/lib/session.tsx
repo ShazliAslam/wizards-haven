@@ -26,6 +26,8 @@ import {
 import { weekKey } from "./payroll";
 import {
   fetchEngineerSheetRecords,
+  fetchPayoutLogs,
+  type PayoutLog,
   pushEngineer,
   pushExpense,
   pushShift,
@@ -66,6 +68,10 @@ interface SessionValue {
   setEngineerActive: (id: string, active: boolean) => void;
   setEngineerDocument: (id: string, kind: DocumentKind, doc: EngineerDocument | null) => void;
   syncEngineerFromSheet: (id: string) => Promise<void>;
+  /** Payout rows read from WeActive9_Payroll_Sync, keyed by engineer id. */
+  payouts: Record<string, PayoutLog[]>;
+  payoutsFor: (id: string) => PayoutLog[];
+  syncPayouts: (id: string, opts?: { silent?: boolean }) => Promise<void>;
 }
 
 // Kept on globalThis so a hot-module reload can't create a second context
@@ -104,6 +110,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const [shifts, setShifts] = useState<ShiftLog[]>(SHIFTS);
   const [expenses, setExpenses] = useState<ExpenseEntry[]>(EXPENSES);
+  const [payouts, setPayouts] = useState<Record<string, PayoutLog[]>>({});
 
   // Restore any admin edits (new engineers, sheet links, deletions) after hydration.
   useEffect(() => {
@@ -335,7 +342,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             })),
           ),
         );
-        if (res.paid !== undefined) {
+        // Financial payouts come from the dedicated WeActive9_Payroll_Sync sheet
+        // (matched by email); the legacy Payments tab is only a fallback.
+        const payoutRes = await fetchPayoutLogs(target.email, target.sheetId);
+        if (payoutRes.payouts.length) {
+          setPayouts((prev) => ({ ...prev, [id]: payoutRes.payouts }));
+          const paid = num(payoutRes.paid);
+          setEngineers((prev) => prev.map((e) => (e.id === id ? { ...e, paidAmount: paid } : e)));
+        } else if (res.paid !== undefined) {
           const paid = num(res.paid);
           setEngineers((prev) => prev.map((e) => (e.id === id ? { ...e, paidAmount: paid } : e)));
         }
@@ -346,8 +360,32 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         });
       },
 
+      payouts,
+      payoutsFor: (id) => payouts[id] ?? [],
+      syncPayouts: async (id, opts) => {
+        const target = findEngineer(id);
+        if (!target?.email) return;
+        const res = await fetchPayoutLogs(target.email, target.sheetId);
+        if (res.error) {
+          if (!opts?.silent) toast.error("Payroll sync failed", { description: res.error });
+          return;
+        }
+        setPayouts((prev) => ({ ...prev, [id]: res.payouts }));
+        if (res.payouts.length) {
+          const paid = num(res.paid);
+          setEngineers((prev) => prev.map((e) => (e.id === id ? { ...e, paidAmount: paid } : e)));
+        }
+        if (!opts?.silent) {
+          toast.success("Payout history synced", {
+            description: `${target.name}: ${res.payouts.length} payout${
+              res.payouts.length === 1 ? "" : "s"
+            } · paid £${num(res.paid).toFixed(2)}`,
+          });
+        }
+      },
+
     };
-  }, [role, engineerId, engineers, shifts, expenses]);
+  }, [role, engineerId, engineers, shifts, expenses, payouts]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
