@@ -32,6 +32,19 @@ import {
   pushExpense,
   pushShift,
 } from "@/services/sheetsService";
+import {
+  deleteEngineerDocument,
+  deleteEngineerRow,
+  fetchClaims,
+  fetchEngineers,
+  fetchPayoutLogsByEmail,
+  fetchPayoutsForEmail,
+  insertClaim,
+  insertEngineer,
+  updateClaim,
+  updateEngineerRow,
+  uploadEngineerDocument,
+} from "@/services/supabaseData";
 
 export type Role = "engineer" | "admin";
 
@@ -67,8 +80,10 @@ interface SessionValue {
   deleteEngineer: (id: string) => void;
   setEngineerActive: (id: string, active: boolean) => void;
   setEngineerDocument: (id: string, kind: DocumentKind, doc: EngineerDocument | null) => void;
+  /** Upload a file to the engineer-documents bucket and save its public URL. */
+  uploadDocument: (id: string, kind: DocumentKind, file: File) => Promise<void>;
   syncEngineerFromSheet: (id: string) => Promise<void>;
-  /** Payout rows read from WeActive9_Payroll_Sync, keyed by engineer id. */
+  /** Payout rows read from Supabase payout_logs (WeActive9_Payroll_Sync mirror). */
   payouts: Record<string, PayoutLog[]>;
   payoutsFor: (id: string) => PayoutLog[];
   syncPayouts: (id: string, opts?: { silent?: boolean }) => Promise<void>;
@@ -84,8 +99,6 @@ const Ctx =
   globalStore.__weactive9SessionCtx ??
   (globalStore.__weactive9SessionCtx = createContext<SessionValue | null>(null));
 
-const STORAGE_KEY = "weactive9.engineers";
-
 /** Merge sheet-sourced rows into local state without duplicating ids. */
 function mergeById<T extends { id: string }>(local: T[], incoming: T[]): T[] {
   const known = new Set(local.map((r) => r.id));
@@ -93,48 +106,55 @@ function mergeById<T extends { id: string }>(local: T[], incoming: T[]): T[] {
   return fresh.length ? [...fresh, ...local] : local;
 }
 
-/** Older saved rosters may predate the shift-rate / VAT fields. */
-function normalise(list: Engineer[]): Engineer[] {
-  return list.map((e) => ({
-    ...e,
-    shiftRate: num(e.shiftRate ?? (e as unknown as { hourlyRate?: number }).hourlyRate, 180),
-    vatRate: Number.isFinite(Number(e.vatRate)) ? num(e.vatRate) : DEFAULT_VAT_DEDUCTION,
-    paidAmount: num(e.paidAmount),
-  }));
-}
-
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<Role | null>(null);
   const [engineerId, setEngineerId] = useState<string>(CURRENT_ENGINEER.id);
   const [engineers, setEngineers] = useState<Engineer[]>(ENGINEERS);
-  const [hydrated, setHydrated] = useState(false);
   const [shifts, setShifts] = useState<ShiftLog[]>(SHIFTS);
   const [expenses, setExpenses] = useState<ExpenseEntry[]>(EXPENSES);
   const [payouts, setPayouts] = useState<Record<string, PayoutLog[]>>({});
 
-  // Restore any admin edits (new engineers, sheet links, deletions) after hydration.
+  // Load the permanent roster, claims and payout logs from Supabase.
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const saved = JSON.parse(raw) as Engineer[];
-        if (Array.isArray(saved) && saved.length) setEngineers(normalise(saved));
+    let active = true;
+    void (async () => {
+      const { engineers: rows, error } = await fetchEngineers();
+      if (!active) return;
+      if (error) {
+        console.error("[session] engineers load failed", error);
+        return;
       }
-    } catch {
-      /* ignore corrupt storage */
-    }
-    setHydrated(true);
+      if (!rows.length) return;
+
+      const emailToId = new Map(rows.map((e) => [e.email.trim().toLowerCase(), e.id]));
+      const [{ byEmail }, claims] = await Promise.all([
+        fetchPayoutLogsByEmail(),
+        fetchClaims(emailToId),
+      ]);
+      if (!active) return;
+
+      const withPaid = rows.map((e) => {
+        const logs = byEmail[e.email.trim().toLowerCase()] ?? [];
+        return logs.length
+          ? { ...e, paidAmount: logs.reduce((a, p) => a + num(p.amount), 0) }
+          : e;
+      });
+      setEngineers(withPaid);
+      setPayouts(
+        Object.fromEntries(
+          withPaid
+            .map((e) => [e.id, byEmail[e.email.trim().toLowerCase()] ?? []] as const)
+            .filter(([, logs]) => logs.length),
+        ),
+      );
+      setShifts([]);
+      setExpenses(claims.claims);
+      setEngineerId((prev) => (withPaid.some((e) => e.id === prev) ? prev : withPaid[0]!.id));
+    })();
+    return () => {
+      active = false;
+    };
   }, []);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(engineers));
-    } catch {
-      /* storage full or unavailable */
-    }
-  }, [engineers, hydrated]);
-
 
   const value = useMemo<SessionValue>(() => {
     const findEngineer = (id: string) => engineers.find((e) => e.id === id);
@@ -143,6 +163,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const syncToast = (label: string, result: { synced: boolean; error?: string }) => {
       if (result.synced) toast.success(`${label} synced to Google Sheets`);
       else if (result.error) toast.error(`Google Sheets sync failed`, { description: result.error });
+    };
+
+    const dbError = (label: string, error?: string) => {
+      if (error) toast.error(`${label} could not be saved`, { description: error });
     };
 
     return {
@@ -226,14 +250,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         toast.success("Query sent to the admin console");
       },
       addExpense: (e) => {
-        const expense: ExpenseEntry = {
+        const temp: ExpenseEntry = {
           ...e,
           id: `EX-new-${Date.now()}`,
           engineerId: engineer.id,
           status: "Pending",
         };
-        setExpenses((prev) => [expense, ...prev]);
-        void pushExpense(expense, engineer).then((r) => syncToast("Expense claim", r));
+        setExpenses((prev) => [temp, ...prev]);
+        void insertClaim(temp, engineer.email).then(({ claim, error }) => {
+          dbError("Expense claim", error);
+          if (claim) {
+            setExpenses((prev) => prev.map((x) => (x.id === temp.id ? claim : x)));
+          }
+        });
+        void pushExpense(temp, engineer).then((r) => syncToast("Expense claim", r));
       },
       updateExpense: (id, patch) => {
         setExpenses((prev) =>
@@ -249,24 +279,54 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               : e,
           ),
         );
+        void updateClaim(id, patch).then((error) => dbError("Expense claim", error));
       },
       addEngineer: (input) => {
-        const next: Engineer = {
-          id: `ENG-${String(engineers.length + 1).padStart(3, "0")}-${Date.now().toString().slice(-4)}`,
+        const optimistic: Engineer = {
+          id: `pending-${Date.now()}`,
           name: input.name,
           email: input.email,
           region: input.region,
           shiftRate: num(input.shiftRate),
-          vatRate: input.vatRate === undefined ? DEFAULT_VAT_DEDUCTION : num(input.vatRate, DEFAULT_VAT_DEDUCTION),
+          vatRate:
+            input.vatRate === undefined
+              ? DEFAULT_VAT_DEDUCTION
+              : num(input.vatRate, DEFAULT_VAT_DEDUCTION),
           paidAmount: num(input.paidAmount),
           sheetId: input.sheetId,
           active: true,
         };
-        setEngineers((prev) => [...prev, next]);
-        void pushEngineer(next).then((r) => syncToast("Engineer record", r));
-        return next;
+        setEngineers((prev) => [...prev, optimistic]);
+        void insertEngineer({
+          name: optimistic.name,
+          email: optimistic.email,
+          region: optimistic.region,
+          shiftRate: optimistic.shiftRate,
+          vatRate: optimistic.vatRate,
+          sheetId: optimistic.sheetId,
+        }).then(({ engineer: saved, error }) => {
+          if (error) {
+            dbError("Engineer record", error);
+            setEngineers((prev) => prev.filter((e) => e.id !== optimistic.id));
+            return;
+          }
+          if (saved) {
+            setEngineers((prev) =>
+              prev.map((e) =>
+                e.id === optimistic.id
+                  ? { ...saved, vatRate: optimistic.vatRate, sheetId: optimistic.sheetId }
+                  : e,
+              ),
+            );
+            setEngineerId((prev) => (prev === optimistic.id ? saved.id : prev));
+            toast.success(`${saved.name} saved`);
+          }
+        });
+        void pushEngineer(optimistic).then((r) => syncToast("Engineer record", r));
+        return optimistic;
       },
       updateEngineer: (id, patch) => {
+        const target = findEngineer(id);
         setEngineers((prev) =>
           prev.map((e) =>
             e.id === id
@@ -283,6 +343,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               : e,
           ),
         );
+        if (target) {
+          void updateEngineerRow(target, patch).then((error) => dbError("Engineer record", error));
+        }
       },
       deleteEngineer: (id) => {
         const target = findEngineer(id);
@@ -293,15 +356,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           const fallback = engineers.find((e) => e.id !== id);
           if (fallback) setEngineerId(fallback.id);
         }
+        void deleteEngineerRow(id).then((error) => dbError("Engineer record", error));
         toast.success(`${target?.name ?? "Engineer"} removed`);
       },
 
       setEngineerActive: (id, active) => {
         setEngineers((prev) => prev.map((e) => (e.id === id ? { ...e, active } : e)));
         const target = findEngineer(id);
+        if (target) {
+          void updateEngineerRow(target, { active }).then((error) =>
+            dbError("Engineer record", error),
+          );
+        }
         toast.success(`${target?.name ?? "Engineer"} ${active ? "activated" : "blocked"}`);
       },
       setEngineerDocument: (id, kind, doc) => {
+        const target = findEngineer(id);
         setEngineers((prev) =>
           prev.map((e) => {
             if (e.id !== id) return e;
@@ -311,6 +381,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             return { ...e, documents: docs };
           }),
         );
+        if (!doc && target?.documents?.[kind]) {
+          void deleteEngineerDocument(target.email, kind, target.documents[kind]!.url).then(
+            (error) => dbError("Document", error),
+          );
+        }
+      },
+      uploadDocument: async (id, kind, file) => {
+        const target = findEngineer(id);
+        if (!target) return;
+        const { document, error } = await uploadEngineerDocument(target.email, kind, file);
+        if (error || !document) {
+          toast.error("Upload failed", { description: error ?? "Unknown storage error" });
+          return;
+        }
+        setEngineers((prev) =>
+          prev.map((e) =>
+            e.id === id ? { ...e, documents: { ...(e.documents ?? {}), [kind]: document } } : e,
+          ),
+        );
+        toast.success("Document uploaded");
       },
       syncEngineerFromSheet: async (id) => {
         const target = findEngineer(id);
@@ -342,9 +432,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             })),
           ),
         );
-        // Financial payouts come from the dedicated WeActive9_Payroll_Sync sheet
-        // (matched by email); the legacy Payments tab is only a fallback.
-        const payoutRes = await fetchPayoutLogs(target.email, target.sheetId);
+        // Financial payouts come from Supabase payout_logs first; the legacy
+        // WeActive9_Payroll_Sync sheet is only a fallback.
+        const live = await fetchPayoutsForEmail(target.email);
+        const payoutRes = live.payouts.length
+          ? live
+          : await fetchPayoutLogs(target.email, target.sheetId);
         if (payoutRes.payouts.length) {
           setPayouts((prev) => ({ ...prev, [id]: payoutRes.payouts }));
           const paid = num(payoutRes.paid);
@@ -365,8 +458,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       syncPayouts: async (id, opts) => {
         const target = findEngineer(id);
         if (!target?.email) return;
-        const res = await fetchPayoutLogs(target.email, target.sheetId);
-        if (res.error) {
+        const live = await fetchPayoutsForEmail(target.email);
+        const res =
+          live.payouts.length || !target.sheetId
+            ? live
+            : await fetchPayoutLogs(target.email, target.sheetId);
+        if (res.error && !res.payouts.length) {
           if (!opts?.silent) toast.error("Payroll sync failed", { description: res.error });
           return;
         }
@@ -383,7 +480,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           });
         }
       },
-
     };
   }, [role, engineerId, engineers, shifts, expenses, payouts]);
 
