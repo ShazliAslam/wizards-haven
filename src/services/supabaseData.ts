@@ -227,7 +227,7 @@ export async function uploadEngineerDocument(
 
   const up = await supabase.storage
     .from(DOCUMENTS_BUCKET)
-    .upload(path, file, { upsert: true, contentType: file.type || undefined });
+    .upload(path, file, { upsert: true, ...(file.type ? { contentType: file.type } : {}) });
   if (up.error) return { error: up.error.message };
 
   const url = supabase.storage.from(DOCUMENTS_BUCKET).getPublicUrl(path).data.publicUrl;
