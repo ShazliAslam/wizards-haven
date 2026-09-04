@@ -240,6 +240,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           status: "Pending",
         };
         setShifts((prev) => [shift, ...prev]);
+        void insertShiftRow(shift).then(({ shift: saved, error }) => {
+          if (error && !isMissingTable(error)) dbError("Shift", error);
+          if (saved) setShifts((prev) => prev.map((x) => (x.id === shift.id ? saved : x)));
+        });
         void pushShift(shift, engineer).then((r) => syncToast("Shift", r));
       },
       updateShift: (id, patch) => {
@@ -262,17 +266,31 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           }
         }
         setShifts((prev) => prev.map((s) => (s.id === id ? { ...s, ...next } : s)));
+        if (target?.engineerId) {
+          void updateShiftRow(id, target.engineerId, next).then((error) => {
+            if (error && !isMissingTable(error)) dbError("Shift", error);
+          });
+        }
       },
       deleteShift: (id) => {
+        const target = shifts.find((s) => s.id === id);
         setShifts((prev) => prev.filter((s) => s.id !== id));
+        if (target?.engineerId) {
+          void deleteShiftRow(id, target.engineerId).then((error) => {
+            if (error && !isMissingTable(error)) dbError("Shift", error);
+          });
+        }
         toast.success("Shift removed");
       },
       commentOnShift: (id, comment) => {
-        setShifts((prev) =>
-          prev.map((s) =>
-            s.id === id ? { ...s, comment, commentAt: new Date().toISOString() } : s,
-          ),
-        );
+        const target = shifts.find((s) => s.id === id);
+        const commentAt = new Date().toISOString();
+        setShifts((prev) => prev.map((s) => (s.id === id ? { ...s, comment, commentAt } : s)));
+        if (target?.engineerId) {
+          void updateShiftRow(id, target.engineerId, { comment, commentAt }).then((error) => {
+            if (error && !isMissingTable(error)) dbError("Query", error);
+          });
+        }
         toast.success("Query sent to the admin console");
       },
       addExpense: (e) => {
@@ -283,15 +301,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           status: "Pending",
         };
         setExpenses((prev) => [temp, ...prev]);
-        void insertClaim(temp, engineer.email).then(({ claim, error }) => {
-          dbError("Expense claim", error);
-          if (claim) {
-            setExpenses((prev) => prev.map((x) => (x.id === temp.id ? claim : x)));
+        void insertExpenseRow(temp).then(async ({ expense, error }) => {
+          if (expense) {
+            setExpenses((prev) => prev.map((x) => (x.id === temp.id ? expense : x)));
+            return;
           }
+          if (isMissingTable(error)) {
+            // Legacy database without the expenses table.
+            const legacy = await insertClaim(temp, engineer.email);
+            dbError("Expense claim", legacy.error);
+            if (legacy.claim) {
+              setExpenses((prev) => prev.map((x) => (x.id === temp.id ? legacy.claim! : x)));
+            }
+            return;
+          }
+          dbError("Expense claim", error);
         });
         void pushExpense(temp, engineer).then((r) => syncToast("Expense claim", r));
       },
       updateExpense: (id, patch) => {
+        const target = expenses.find((e) => e.id === id);
         setExpenses((prev) =>
           prev.map((e) =>
             e.id === id
@@ -305,8 +334,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               : e,
           ),
         );
-        void updateClaim(id, patch).then((error) => dbError("Expense claim", error));
+        if (target?.engineerId) {
+          void updateExpenseRow(id, target.engineerId, patch).then(async (error) => {
+            if (isMissingTable(error)) {
+              dbError("Expense claim", await updateClaim(id, patch));
+              return;
+            }
+            dbError("Expense claim", error);
+          });
+        }
       },
+
       addEngineer: (input) => {
         const optimistic: Engineer = {
           id: `pending-${Date.now()}`,
