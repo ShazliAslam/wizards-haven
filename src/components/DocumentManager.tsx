@@ -20,25 +20,23 @@ const KINDS: { kind: DocumentKind; label: string }[] = [
 const MAX_BYTES = 4 * 1024 * 1024;
 
 export function DocumentManager({ engineer }: { engineer: Engineer }) {
-  const { setEngineerDocument } = useSession();
+  const { setEngineerDocument, uploadDocument } = useSession();
   const [preview, setPreview] = useState<{ name: string; url: string } | null>(null);
+  const [busy, setBusy] = useState<DocumentKind | null>(null);
 
-  const upload = (kind: DocumentKind, file: File) => {
+  const upload = async (kind: DocumentKind, file: File) => {
     if (file.size > MAX_BYTES) {
       toast.error("File too large", { description: "Keep documents under 4MB." });
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setEngineerDocument(engineer.id, kind, {
-        name: file.name,
-        url: String(reader.result),
-        uploadedAt: new Date().toISOString(),
-      });
-      toast.success("Document uploaded");
-    };
-    reader.onerror = () => toast.error("Could not read that file");
-    reader.readAsDataURL(file);
+    setBusy(kind);
+    try {
+      // Stored in the engineer-documents Supabase Storage bucket; the public
+      // URL is saved to the documents table for in-app previews.
+      await uploadDocument(engineer.id, kind, file);
+    } finally {
+      setBusy(null);
+    }
   };
 
   return (
