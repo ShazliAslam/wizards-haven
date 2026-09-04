@@ -138,11 +138,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (!rows.length) return;
 
       const emailToId = new Map(rows.map((e) => [e.email.trim().toLowerCase(), e.id]));
-      const [{ byEmail }, claims] = await Promise.all([
+      const [{ byEmail }, records] = await Promise.all([
         fetchPayoutLogsByEmail(),
-        fetchClaims(emailToId),
+        fetchRecordsForEngineers(rows.map((e) => e.id)),
       ]);
       if (!active) return;
+
+      // Legacy fallback: databases created before the expenses table still
+      // hold claims keyed by engineer_email.
+      let expenseRows = records.expenses;
+      if (isMissingTable(records.expensesError)) {
+        const legacy = await fetchClaims(emailToId);
+        if (!active) return;
+        expenseRows = legacy.claims;
+      } else if (records.expensesError) {
+        console.error("[session] expenses load failed", records.expensesError);
+      }
+      if (records.shiftsError) {
+        console.error("[session] shift_logs load failed", records.shiftsError);
+      }
 
       const withPaid = rows.map((e) => {
         const logs = byEmail[e.email.trim().toLowerCase()] ?? [];
@@ -158,9 +172,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             .filter(([, logs]) => logs.length),
         ),
       );
-      setShifts([]);
-      setExpenses(claims.claims);
+      setShifts(records.shifts);
+      setExpenses(expenseRows);
       setEngineerId((prev) => (withPaid.some((e) => e.id === prev) ? prev : withPaid[0]!.id));
+
     })();
     return () => {
       active = false;
