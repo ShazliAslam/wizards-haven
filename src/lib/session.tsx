@@ -479,23 +479,32 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           toast.error("Google Sheets sync failed", { description: res.error });
           return;
         }
-        setShifts((prev) =>
-          mergeById(
-            prev,
-            res.shifts.map((s) => ({ ...s, shiftCount: num(s.shiftCount, 1) })),
-          ),
-        );
-        setExpenses((prev) =>
-          mergeById(
-            prev,
-            res.expenses.map((e) => ({
-              ...e,
-              fuel: num(e.fuel),
-              meals: num(e.meals),
-              creditCard: num(e.creditCard),
-            })),
-          ),
-        );
+        // Persist the sheet rows into this engineer's own shift_logs / expenses
+        // rows (engineer_id scoped), then replace only their rows in state.
+        const sheetShifts = res.shifts.map((s) => ({
+          ...s,
+          engineerId: id,
+          shiftCount: num(s.shiftCount, 1),
+        }));
+        const sheetExpenses = res.expenses.map((e) => ({
+          ...e,
+          engineerId: id,
+          fuel: num(e.fuel),
+          meals: num(e.meals),
+          creditCard: num(e.creditCard),
+        }));
+        const saved = await saveSheetRecords(id, sheetShifts, sheetExpenses);
+        if (saved.error && !isMissingTable(saved.error)) {
+          toast.error("Saving sheet records failed", { description: saved.error });
+        }
+        if (saved.shifts.length || saved.expenses.length) {
+          setShifts((prev) => [...saved.shifts, ...prev.filter((s) => s.engineerId !== id)]);
+          setExpenses((prev) => [...saved.expenses, ...prev.filter((e) => e.engineerId !== id)]);
+        } else {
+          setShifts((prev) => mergeById(prev, sheetShifts));
+          setExpenses((prev) => mergeById(prev, sheetExpenses));
+        }
+
         // Financial payouts come from Supabase payout_logs first; the legacy
         // WeActive9_Payroll_Sync sheet is only a fallback.
         const live = await fetchPayoutsForEmail(target.email);
