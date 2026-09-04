@@ -45,6 +45,17 @@ import {
   updateEngineerRow,
   uploadEngineerDocument,
 } from "@/services/supabaseData";
+import {
+  deleteShiftRow,
+  fetchRecordsForEngineers,
+  insertExpenseRow,
+  insertShiftRow,
+  isMissingTable,
+  saveSheetRecords,
+  updateExpenseRow,
+  updateShiftRow,
+} from "@/services/engineerRecords";
+
 
 export type Role = "engineer" | "admin";
 
@@ -127,11 +138,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (!rows.length) return;
 
       const emailToId = new Map(rows.map((e) => [e.email.trim().toLowerCase(), e.id]));
-      const [{ byEmail }, claims] = await Promise.all([
+      const [{ byEmail }, records] = await Promise.all([
         fetchPayoutLogsByEmail(),
-        fetchClaims(emailToId),
+        fetchRecordsForEngineers(rows.map((e) => e.id)),
       ]);
       if (!active) return;
+
+      // Legacy fallback: databases created before the expenses table still
+      // hold claims keyed by engineer_email.
+      let expenseRows = records.expenses;
+      if (isMissingTable(records.expensesError)) {
+        const legacy = await fetchClaims(emailToId);
+        if (!active) return;
+        expenseRows = legacy.claims;
+      } else if (records.expensesError) {
+        console.error("[session] expenses load failed", records.expensesError);
+      }
+      if (records.shiftsError) {
+        console.error("[session] shift_logs load failed", records.shiftsError);
+      }
 
       const withPaid = rows.map((e) => {
         const logs = byEmail[e.email.trim().toLowerCase()] ?? [];
@@ -147,9 +172,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             .filter(([, logs]) => logs.length),
         ),
       );
-      setShifts([]);
-      setExpenses(claims.claims);
+      setShifts(records.shifts);
+      setExpenses(expenseRows);
       setEngineerId((prev) => (withPaid.some((e) => e.id === prev) ? prev : withPaid[0]!.id));
+
     })();
     return () => {
       active = false;
@@ -214,6 +240,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           status: "Pending",
         };
         setShifts((prev) => [shift, ...prev]);
+        void insertShiftRow(shift).then(({ shift: saved, error }) => {
+          if (error && !isMissingTable(error)) dbError("Shift", error);
+          if (saved) setShifts((prev) => prev.map((x) => (x.id === shift.id ? saved : x)));
+        });
         void pushShift(shift, engineer).then((r) => syncToast("Shift", r));
       },
       updateShift: (id, patch) => {
@@ -236,17 +266,31 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           }
         }
         setShifts((prev) => prev.map((s) => (s.id === id ? { ...s, ...next } : s)));
+        if (target?.engineerId) {
+          void updateShiftRow(id, target.engineerId, next).then((error) => {
+            if (error && !isMissingTable(error)) dbError("Shift", error);
+          });
+        }
       },
       deleteShift: (id) => {
+        const target = shifts.find((s) => s.id === id);
         setShifts((prev) => prev.filter((s) => s.id !== id));
+        if (target?.engineerId) {
+          void deleteShiftRow(id, target.engineerId).then((error) => {
+            if (error && !isMissingTable(error)) dbError("Shift", error);
+          });
+        }
         toast.success("Shift removed");
       },
       commentOnShift: (id, comment) => {
-        setShifts((prev) =>
-          prev.map((s) =>
-            s.id === id ? { ...s, comment, commentAt: new Date().toISOString() } : s,
-          ),
-        );
+        const target = shifts.find((s) => s.id === id);
+        const commentAt = new Date().toISOString();
+        setShifts((prev) => prev.map((s) => (s.id === id ? { ...s, comment, commentAt } : s)));
+        if (target?.engineerId) {
+          void updateShiftRow(id, target.engineerId, { comment, commentAt }).then((error) => {
+            if (error && !isMissingTable(error)) dbError("Query", error);
+          });
+        }
         toast.success("Query sent to the admin console");
       },
       addExpense: (e) => {
@@ -257,15 +301,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           status: "Pending",
         };
         setExpenses((prev) => [temp, ...prev]);
-        void insertClaim(temp, engineer.email).then(({ claim, error }) => {
-          dbError("Expense claim", error);
-          if (claim) {
-            setExpenses((prev) => prev.map((x) => (x.id === temp.id ? claim : x)));
+        void insertExpenseRow(temp).then(async ({ expense, error }) => {
+          if (expense) {
+            setExpenses((prev) => prev.map((x) => (x.id === temp.id ? expense : x)));
+            return;
           }
+          if (isMissingTable(error)) {
+            // Legacy database without the expenses table.
+            const legacy = await insertClaim(temp, engineer.email);
+            dbError("Expense claim", legacy.error);
+            if (legacy.claim) {
+              setExpenses((prev) => prev.map((x) => (x.id === temp.id ? legacy.claim! : x)));
+            }
+            return;
+          }
+          dbError("Expense claim", error);
         });
         void pushExpense(temp, engineer).then((r) => syncToast("Expense claim", r));
       },
       updateExpense: (id, patch) => {
+        const target = expenses.find((e) => e.id === id);
         setExpenses((prev) =>
           prev.map((e) =>
             e.id === id
@@ -279,8 +334,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               : e,
           ),
         );
-        void updateClaim(id, patch).then((error) => dbError("Expense claim", error));
+        if (target?.engineerId) {
+          void updateExpenseRow(id, target.engineerId, patch).then(async (error) => {
+            if (isMissingTable(error)) {
+              dbError("Expense claim", await updateClaim(id, patch));
+              return;
+            }
+            dbError("Expense claim", error);
+          });
+        }
       },
+
       addEngineer: (input) => {
         const optimistic: Engineer = {
           id: `pending-${Date.now()}`,
@@ -415,23 +479,32 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           toast.error("Google Sheets sync failed", { description: res.error });
           return;
         }
-        setShifts((prev) =>
-          mergeById(
-            prev,
-            res.shifts.map((s) => ({ ...s, shiftCount: num(s.shiftCount, 1) })),
-          ),
-        );
-        setExpenses((prev) =>
-          mergeById(
-            prev,
-            res.expenses.map((e) => ({
-              ...e,
-              fuel: num(e.fuel),
-              meals: num(e.meals),
-              creditCard: num(e.creditCard),
-            })),
-          ),
-        );
+        // Persist the sheet rows into this engineer's own shift_logs / expenses
+        // rows (engineer_id scoped), then replace only their rows in state.
+        const sheetShifts = res.shifts.map((s) => ({
+          ...s,
+          engineerId: id,
+          shiftCount: num(s.shiftCount, 1),
+        }));
+        const sheetExpenses = res.expenses.map((e) => ({
+          ...e,
+          engineerId: id,
+          fuel: num(e.fuel),
+          meals: num(e.meals),
+          creditCard: num(e.creditCard),
+        }));
+        const saved = await saveSheetRecords(id, sheetShifts, sheetExpenses);
+        if (saved.error && !isMissingTable(saved.error)) {
+          toast.error("Saving sheet records failed", { description: saved.error });
+        }
+        if (saved.shifts.length || saved.expenses.length) {
+          setShifts((prev) => [...saved.shifts, ...prev.filter((s) => s.engineerId !== id)]);
+          setExpenses((prev) => [...saved.expenses, ...prev.filter((e) => e.engineerId !== id)]);
+        } else {
+          setShifts((prev) => mergeById(prev, sheetShifts));
+          setExpenses((prev) => mergeById(prev, sheetExpenses));
+        }
+
         // Financial payouts come from Supabase payout_logs first; the legacy
         // WeActive9_Payroll_Sync sheet is only a fallback.
         const live = await fetchPayoutsForEmail(target.email);
