@@ -45,6 +45,17 @@ import {
   updateEngineerRow,
   uploadEngineerDocument,
 } from "@/services/supabaseData";
+import {
+  deleteShiftRow,
+  fetchRecordsForEngineers,
+  insertExpenseRow,
+  insertShiftRow,
+  isMissingTable,
+  saveSheetRecords,
+  updateExpenseRow,
+  updateShiftRow,
+} from "@/services/engineerRecords";
+
 
 export type Role = "engineer" | "admin";
 
