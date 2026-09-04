@@ -119,7 +119,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     let active = true;
     void (async () => {
       const { engineers: rows, error } = await fetchEngineers();
-      console.log("[session] loaded", rows.length, error);
       if (!active) return;
       if (error) {
         console.error("[session] engineers load failed", error);
