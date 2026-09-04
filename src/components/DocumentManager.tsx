@@ -87,15 +87,16 @@ export function DocumentManager({ engineer }: { engineer: Engineer }) {
                   className="mt-2 flex cursor-pointer flex-col items-center gap-1 rounded-lg border-2 border-dashed border-border bg-secondary/50 p-4 text-center text-xs transition hover:border-emerald"
                 >
                   <UploadCloud className="h-5 w-5 text-emerald" />
-                  Upload file
+                  {busy === kind ? "Uploading…" : "Upload file"}
                   <input
                     id={`doc-${kind}-${engineer.id}`}
                     type="file"
                     accept="image/*,application/pdf"
                     className="sr-only"
+                    disabled={busy === kind}
                     onChange={(e) => {
                       const file = e.target.files?.[0];
-                      if (file) upload(kind, file);
+                      if (file) void upload(kind, file);
                     }}
                   />
                 </label>
