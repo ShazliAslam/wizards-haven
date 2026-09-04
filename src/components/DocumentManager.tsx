@@ -20,25 +20,23 @@ const KINDS: { kind: DocumentKind; label: string }[] = [
 const MAX_BYTES = 4 * 1024 * 1024;
 
 export function DocumentManager({ engineer }: { engineer: Engineer }) {
-  const { setEngineerDocument } = useSession();
+  const { setEngineerDocument, uploadDocument } = useSession();
   const [preview, setPreview] = useState<{ name: string; url: string } | null>(null);
+  const [busy, setBusy] = useState<DocumentKind | null>(null);
 
-  const upload = (kind: DocumentKind, file: File) => {
+  const upload = async (kind: DocumentKind, file: File) => {
     if (file.size > MAX_BYTES) {
       toast.error("File too large", { description: "Keep documents under 4MB." });
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setEngineerDocument(engineer.id, kind, {
-        name: file.name,
-        url: String(reader.result),
-        uploadedAt: new Date().toISOString(),
-      });
-      toast.success("Document uploaded");
-    };
-    reader.onerror = () => toast.error("Could not read that file");
-    reader.readAsDataURL(file);
+    setBusy(kind);
+    try {
+      // Stored in the engineer-documents Supabase Storage bucket; the public
+      // URL is saved to the documents table for in-app previews.
+      await uploadDocument(engineer.id, kind, file);
+    } finally {
+      setBusy(null);
+    }
   };
 
   return (
@@ -89,15 +87,16 @@ export function DocumentManager({ engineer }: { engineer: Engineer }) {
                   className="mt-2 flex cursor-pointer flex-col items-center gap-1 rounded-lg border-2 border-dashed border-border bg-secondary/50 p-4 text-center text-xs transition hover:border-emerald"
                 >
                   <UploadCloud className="h-5 w-5 text-emerald" />
-                  Upload file
+                  {busy === kind ? "Uploading…" : "Upload file"}
                   <input
                     id={`doc-${kind}-${engineer.id}`}
                     type="file"
                     accept="image/*,application/pdf"
                     className="sr-only"
+                    disabled={busy === kind}
                     onChange={(e) => {
                       const file = e.target.files?.[0];
-                      if (file) upload(kind, file);
+                      if (file) void upload(kind, file);
                     }}
                   />
                 </label>
