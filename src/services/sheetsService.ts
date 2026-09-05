@@ -5,6 +5,8 @@
  * connector credentials never reach the browser.
  */
 import { appendSheetRow, readSheetRange } from "@/lib/sheets.functions";
+import { buildHeaderMap, cell, isoDate, looksLikeHeader, numeric } from "@/services/sheetParser";
+
 import {
   DEFAULT_VAT_DEDUCTION,
   type Engineer,
