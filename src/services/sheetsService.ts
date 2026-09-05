@@ -18,11 +18,13 @@ export const SHEET_TABS = {
   engineers: "Engineers!A2:I",
   shifts: "Shifts!A:G",
   expenses: "Expenses!A:H",
-  shiftsRead: "Shifts!A2:G",
-  expensesRead: "Expenses!A2:H",
+  /** Read from row 1 so the header row can drive column matching. */
+  shiftsRead: "Shifts!A1:Z",
+  expensesRead: "Expenses!A1:Z",
   /** Date | Amount paid */
   paymentsRead: "Payments!A2:B",
 } as const;
+
 
 export interface SyncResult {
   synced: boolean;
