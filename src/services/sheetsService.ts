@@ -5,6 +5,8 @@
  * connector credentials never reach the browser.
  */
 import { appendSheetRow, readSheetRange } from "@/lib/sheets.functions";
+import { buildHeaderMap, cell, isoDate, looksLikeHeader, numeric } from "@/services/sheetParser";
+
 import {
   DEFAULT_VAT_DEDUCTION,
   type Engineer,
@@ -18,11 +20,13 @@ export const SHEET_TABS = {
   engineers: "Engineers!A2:I",
   shifts: "Shifts!A:G",
   expenses: "Expenses!A:H",
-  shiftsRead: "Shifts!A2:G",
-  expensesRead: "Expenses!A2:H",
+  /** Read from row 1 so the header row can drive column matching. */
+  shiftsRead: "Shifts!A1:Z",
+  expensesRead: "Expenses!A1:Z",
   /** Date | Amount paid */
   paymentsRead: "Payments!A2:B",
 } as const;
+
 
 export interface SyncResult {
   synced: boolean;
@@ -85,31 +89,50 @@ export async function fetchEngineerSheetRecords(engineer: Engineer): Promise<{
       readSheetRange({ data: { range: SHEET_TABS.shiftsRead, spreadsheetId } }),
       readSheetRange({ data: { range: SHEET_TABS.expensesRead, spreadsheetId } }),
     ]);
-    const shifts: ShiftLog[] = s.values
-      .filter((r) => r[0])
-      .map((r) => ({
-        id: r[0] ?? "",
-        engineerId: engineer.id,
-        date: r[2] ?? "",
-        site: r[3] ?? "",
-        shiftType: (r[4] === "Night" ? "Night" : "Day") as ShiftType,
-        shiftCount: Number(r[5] ?? 1) || 1,
-        ownVehicle: truthy(r[6]),
-        status: "Approved" as Status,
-      }));
-    const expenses: ExpenseEntry[] = e.values
-      .filter((r) => r[0])
-      .map((r) => ({
-        id: r[0] ?? "",
-        engineerId: engineer.id,
-        date: r[2] ?? "",
-        site: r[3] ?? "",
-        fuel: Number(r[4] ?? 0),
-        meals: Number(r[5] ?? 0),
-        creditCard: Number(r[6] ?? 0),
-        receiptName: r[7] || undefined,
-        status: "Approved" as Status,
-      }));
+    // Header-driven column matching (falls back to the legacy fixed layout
+    // when the sheet has no recognisable header row).
+    const sHeader = looksLikeHeader(s.values[0]);
+    const sMap = sHeader ? buildHeaderMap(s.values[0]) : {};
+    const sRows = sHeader ? s.values.slice(1) : s.values;
+
+    const eHeader = looksLikeHeader(e.values[0]);
+    const eMap = eHeader ? buildHeaderMap(e.values[0]) : {};
+    const eRows = eHeader ? e.values.slice(1) : e.values;
+
+    const shifts: ShiftLog[] = sRows
+      .map((r) => {
+        const date = isoDate(cell(r, sMap, "date", 2));
+        const type = cell(r, sMap, "shiftType", 4);
+        return {
+          id: cell(r, sMap, "id", 0),
+          engineerId: engineer.id,
+          date,
+          site: cell(r, sMap, "site", 3),
+          shiftType: (type.toLowerCase() === "night" ? "Night" : "Day") as ShiftType,
+          shiftCount: numeric(cell(r, sMap, "shiftCount", 5), 1) || 1,
+          ownVehicle: truthy(cell(r, sMap, "ownVehicle", 6)),
+          status: "Approved" as Status,
+        };
+      })
+      .filter((row) => !!row.date || !!row.site);
+
+    const expenses: ExpenseEntry[] = eRows
+      .map((r) => {
+        const receiptName = cell(r, eMap, "receiptName", 7);
+        return {
+          id: cell(r, eMap, "id", 0),
+          engineerId: engineer.id,
+          date: isoDate(cell(r, eMap, "date", 2)),
+          site: cell(r, eMap, "site", 3),
+          fuel: numeric(cell(r, eMap, "fuel", 4)),
+          meals: numeric(cell(r, eMap, "meals", 5)),
+          creditCard: numeric(cell(r, eMap, "card", 6)),
+          ...(receiptName ? { receiptName } : {}),
+          status: "Approved" as Status,
+        };
+      })
+      .filter((row) => !!row.date || row.fuel || row.meals || row.creditCard);
+
 
     const paid = await fetchPaidTotal(spreadsheetId);
     return { shifts, expenses, configured: true, ...(paid !== undefined ? { paid } : {}) };
